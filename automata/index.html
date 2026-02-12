@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automata - Resource Management & Automation Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Top Bar -->
+        <header id="top-bar">
+            <div class="game-title">
+                <h1>⚡ AUTOMATA</h1>
+                <span class="subtitle">Resource Empire Builder</span>
+            </div>
+            <div id="power-indicator">
+                <span class="power-icon">⚡</span>
+                <span id="power-status">Power: <span id="power-current">0</span>/<span id="power-max">0</span> MW</span>
+                <div class="power-bar-container">
+                    <div id="power-bar" class="power-bar"></div>
+                </div>
+            </div>
+            <div class="top-actions">
+                <button id="btn-save" class="btn-small" title="Save Game">💾 Save</button>
+                <button id="btn-settings" class="btn-small" title="Settings">⚙️</button>
+            </div>
+        </header>
+
+        <!-- Resource Ticker -->
+        <div id="resource-ticker">
+            <div class="ticker-item" data-resource="energy">
+                <span class="ticker-icon">⚡</span>
+                <span class="ticker-name">Energy</span>
+                <span class="ticker-value" id="ticker-energy">0</span>
+                <span class="ticker-rate" id="ticker-energy-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="minerals">
+                <span class="ticker-icon">💎</span>
+                <span class="ticker-name">Minerals</span>
+                <span class="ticker-value" id="ticker-minerals">0</span>
+                <span class="ticker-rate" id="ticker-minerals-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="data">
+                <span class="ticker-icon">📊</span>
+                <span class="ticker-name">Data</span>
+                <span class="ticker-value" id="ticker-data">0</span>
+                <span class="ticker-rate" id="ticker-data-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="circuits">
+                <span class="ticker-icon">🔌</span>
+                <span class="ticker-name">Circuits</span>
+                <span class="ticker-value" id="ticker-circuits">0</span>
+                <span class="ticker-rate" id="ticker-circuits-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="alloys">
+                <span class="ticker-icon">🔩</span>
+                <span class="ticker-name">Alloys</span>
+                <span class="ticker-value" id="ticker-alloys">0</span>
+                <span class="ticker-rate" id="ticker-alloys-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="codeModules">
+                <span class="ticker-icon">💻</span>
+                <span class="ticker-name">Code</span>
+                <span class="ticker-value" id="ticker-codeModules">0</span>
+                <span class="ticker-rate" id="ticker-codeModules-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="aiCores">
+                <span class="ticker-icon">🧠</span>
+                <span class="ticker-name">AI Cores</span>
+                <span class="ticker-value" id="ticker-aiCores">0</span>
+                <span class="ticker-rate" id="ticker-aiCores-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="quantumCells">
+                <span class="ticker-icon">⚛️</span>
+                <span class="ticker-name">Q-Cells</span>
+                <span class="ticker-value" id="ticker-quantumCells">0</span>
+                <span class="ticker-rate" id="ticker-quantumCells-rate">+0/s</span>
+            </div>
+            <div class="ticker-item" data-resource="nanofibers">
+                <span class="ticker-icon">🧬</span>
+                <span class="ticker-name">Nanofibers</span>
+                <span class="ticker-value" id="ticker-nanofibers">0</span>
+                <span class="ticker-rate" id="ticker-nanofibers-rate">+0/s</span>
+            </div>
+            <div class="ticker-item prestige-ticker" data-resource="singularityShards">
+                <span class="ticker-icon">✨</span>
+                <span class="ticker-name">Shards</span>
+                <span class="ticker-value" id="ticker-singularityShards">0</span>
+            </div>
+            <div class="ticker-item credits-ticker" data-resource="credits">
+                <span class="ticker-icon">🪙</span>
+                <span class="ticker-name">Credits</span>
+                <span class="ticker-value" id="ticker-credits">0</span>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <nav id="tab-nav">
+            <button class="tab-btn active" data-tab="resources">📦 Resources</button>
+            <button class="tab-btn" data-tab="buildings">🏗️ Buildings</button>
+            <button class="tab-btn" data-tab="research">🔬 Research</button>
+            <button class="tab-btn" data-tab="automation">🤖 Automation</button>
+            <button class="tab-btn" data-tab="prestige">✨ Prestige</button>
+            <button class="tab-btn" data-tab="stats">📊 Stats</button>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main id="main-content">
+            <!-- Resources Tab -->
+            <div id="tab-resources" class="tab-content active">
+                <div class="tab-header">
+                    <h2>Resource Gathering</h2>
+                    <p class="tab-desc">Click to gather raw resources. Build extractors to automate collection.</p>
+                </div>
+                <div class="gathering-grid">
+                    <div class="gather-card" id="gather-energy">
+                        <div class="gather-icon">⚡</div>
+                        <h3>Energy</h3>
+                        <div class="resource-bar-wrap">
+                            <div class="resource-bar" id="bar-energy"></div>
+                            <span class="resource-bar-text" id="bar-text-energy">0 / 100</span>
+                        </div>
+                        <div class="gather-rate" id="rate-energy">+0/s</div>
+                        <button class="btn-gather" data-resource="energy">⚡ Gather Energy</button>
+                        <div class="gather-amount">+1 per click</div>
+                    </div>
+                    <div class="gather-card" id="gather-minerals">
+                        <div class="gather-icon">💎</div>
+                        <h3>Minerals</h3>
+                        <div class="resource-bar-wrap">
+                            <div class="resource-bar" id="bar-minerals"></div>
+                            <span class="resource-bar-text" id="bar-text-minerals">0 / 100</span>
+                        </div>
+                        <div class="gather-rate" id="rate-minerals">+0/s</div>
+                        <button class="btn-gather" data-resource="minerals">💎 Gather Minerals</button>
+                        <div class="gather-amount">+1 per click</div>
+                    </div>
+                    <div class="gather-card" id="gather-data">
+                        <div class="gather-icon">📊</div>
+                        <h3>Data Fragments</h3>
+                        <div class="resource-bar-wrap">
+                            <div class="resource-bar" id="bar-data"></div>
+                            <span class="resource-bar-text" id="bar-text-data">0 / 100</span>
+                        </div>
+                        <div class="gather-rate" id="rate-data">+0/s</div>
+                        <button class="btn-gather" data-resource="data">📊 Gather Data</button>
+                        <div class="gather-amount">+1 per click</div>
+                    </div>
+                </div>
+
+                <div class="section-divider">
+                    <h3>Processed Resources (Tier 2)</h3>
+                </div>
+                <div class="processed-grid">
+                    <div class="resource-display-card">
+                        <span class="res-icon">🔌</span>
+                        <span class="res-name">Circuits</span>
+                        <div class="resource-bar-wrap small">
+                            <div class="resource-bar tier2" id="bar-circuits"></div>
+                            <span class="resource-bar-text" id="bar-text-circuits">0 / 50</span>
+                        </div>
+                        <span class="res-rate" id="rate-circuits">+0/s</span>
+                    </div>
+                    <div class="resource-display-card">
+                        <span class="res-icon">🔩</span>
+                        <span class="res-name">Alloys</span>
+                        <div class="resource-bar-wrap small">
+                            <div class="resource-bar tier2" id="bar-alloys"></div>
+                            <span class="resource-bar-text" id="bar-text-alloys">0 / 50</span>
+                        </div>
+                        <span class="res-rate" id="rate-alloys">+0/s</span>
+                    </div>
+                    <div class="resource-display-card">
+                        <span class="res-icon">💻</span>
+                        <span class="res-name">Code Modules</span>
+                        <div class="resource-bar-wrap small">
+                            <div class="resource-bar tier2" id="bar-codeModules"></div>
+                            <span class="resource-bar-text" id="bar-text-codeModules">0 / 50</span>
+                        </div>
+                        <span class="res-rate" id="rate-codeModules">+0/s</span>
+                    </div>
+                </div>
+
+                <div class="section-divider">
+                    <h3>Advanced Resources (Tier 3)</h3>
+                </div>
+                <div class="processed-grid">
+                    <div class="resource-display-card">
+                        <span class="res-icon">🧠</span>
+                        <span class="res-name">AI Cores</span>
+                        <div class="resource-bar-wrap small">
+                            <div class="resource-bar tier3" id="bar-aiCores"></div>
+                            <span class="resource-bar-text" id="bar-text-aiCores">0 / 25</span>
+                        </div>
+                        <span class="res-rate" id="rate-aiCores">+0/s</span>
+                    </div>
+                    <div class="resource-display-card">
+                        <span class="res-icon">⚛️</span>
+                        <span class="res-name">Quantum Cells</span>
+                        <div class="resource-bar-wrap small">
+                            <div class="resource-bar tier3" id="bar-quantumCells"></div>
+                            <span class="resource-bar-text" id="bar-text-quantumCells">0 / 25</span>
+                        </div>
+                        <span class="res-rate" id="rate-quantumCells">+0/s</span>
+                    </div>
+                    <div class="resource-display-card">
+                        <span class="res-icon">🧬</span>
+                        <span class="res-name">Nanofibers</span>
+                        <div class="resource-bar-wrap small">
+                            <div class="resource-bar tier3" id="bar-nanofibers"></div>
+                            <span class="resource-bar-text" id="bar-text-nanofibers">0 / 25</span>
+                        </div>
+                        <span class="res-rate" id="rate-nanofibers">+0/s</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buildings Tab -->
+            <div id="tab-buildings" class="tab-content">
+                <div class="tab-header">
+                    <h2>Buildings & Structures</h2>
+                    <p class="tab-desc">Construct buildings to automate resource production and processing.</p>
+                </div>
+                <div class="building-categories">
+                    <button class="cat-btn active" data-category="extractors">⛏️ Extractors</button>
+                    <button class="cat-btn" data-category="processors">🏭 Processors</button>
+                    <button class="cat-btn" data-category="factories">🔬 Factories</button>
+                    <button class="cat-btn" data-category="storage">📦 Storage</button>
+                    <button class="cat-btn" data-category="power">⚡ Power</button>
+                </div>
+                <div id="buildings-list" class="buildings-grid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Research Tab -->
+            <div id="tab-research" class="tab-content">
+                <div class="tab-header">
+                    <h2>Research Lab</h2>
+                    <p class="tab-desc">Unlock new technologies and upgrades to improve your empire.</p>
+                </div>
+                <div class="research-branches">
+                    <button class="branch-btn active" data-branch="efficiency">🔧 Efficiency</button>
+                    <button class="branch-btn" data-branch="capacity">📦 Capacity</button>
+                    <button class="branch-btn" data-branch="automation">🤖 Automation</button>
+                    <button class="branch-btn" data-branch="expansion">🌐 Expansion</button>
+                    <button class="branch-btn" data-branch="transcendence">✨ Transcendence</button>
+                </div>
+                <div id="research-list" class="research-grid">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Automation Tab -->
+            <div id="tab-automation" class="tab-content">
+                <div class="tab-header">
+                    <h2>Automation Center</h2>
+                    <p class="tab-desc">Set up automated processes and smart resource routing.</p>
+                </div>
+                <div class="automation-sections">
+                    <div class="auto-section">
+                        <h3>🔄 Auto-Sellers</h3>
+                        <p class="auto-desc">Automatically sell excess resources for credits.</p>
+                        <div id="auto-sellers-list">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    <div class="auto-section">
+                        <h3>📋 Task Queue</h3>
+                        <p class="auto-desc">Queue up build orders to execute automatically.</p>
+                        <div id="task-queue-controls">
+                            <select id="task-queue-select">
+                                <option value="">-- Select a building --</option>
+                            </select>
+                            <button id="btn-add-task" class="btn-action">Add to Queue</button>
+                            <button id="btn-clear-queue" class="btn-action btn-danger">Clear Queue</button>
+                        </div>
+                        <div id="task-queue-list" class="queue-list">
+                            <div class="queue-empty">Queue is empty</div>
+                        </div>
+                    </div>
+                    <div class="auto-section">
+                        <h3>🧠 Smart Routing</h3>
+                        <p class="auto-desc">AI-powered resource distribution between buildings.</p>
+                        <div id="smart-routing-status" class="locked-feature">
+                            🔒 Unlock through Research: "Logistics AI"
+                        </div>
+                    </div>
+                    <div class="auto-section">
+                        <h3>📐 Production Blueprints</h3>
+                        <p class="auto-desc">Save and load production configurations.</p>
+                        <div id="blueprints-controls">
+                            <button id="btn-save-blueprint" class="btn-action">💾 Save Current Config</button>
+                            <div id="blueprints-list" class="blueprints-grid">
+                                <div class="queue-empty">No blueprints saved</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Prestige Tab -->
+            <div id="tab-prestige" class="tab-content">
+                <div class="tab-header">
+                    <h2>✨ Singularity</h2>
+                    <p class="tab-desc">Transcend your current reality for permanent bonuses.</p>
+                </div>
+                <div class="prestige-main">
+                    <div class="prestige-info-card">
+                        <div class="prestige-shard-display">
+                            <span class="big-icon">✨</span>
+                            <div class="shard-count">
+                                <span id="current-shards">0</span>
+                                <span class="shard-label">Singularity Shards</span>
+                            </div>
+                        </div>
+                        <div class="prestige-preview">
+                            <p>Resetting will grant you:</p>
+                            <span class="prestige-gain" id="prestige-gain">0 Singularity Shards</span>
+                            <p class="prestige-formula">Based on total resources produced this run</p>
+                        </div>
+                        <button id="btn-prestige" class="btn-prestige" disabled>
+                            🌀 Initiate Singularity
+                        </button>
+                        <p class="prestige-req" id="prestige-req">Requires at least 1 AI Core, 1 Quantum Cell, and 1 Nanofiber produced</p>
+                    </div>
+                    <div class="prestige-upgrades">
+                        <h3>Permanent Upgrades</h3>
+                        <div id="prestige-upgrades-list" class="prestige-grid">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Tab -->
+            <div id="tab-stats" class="tab-content">
+                <div class="tab-header">
+                    <h2>📊 Statistics & Achievements</h2>
+                    <p class="tab-desc">Track your progress and unlock achievements.</p>
+                </div>
+                <div class="stats-layout">
+                    <div class="stats-section">
+                        <h3>📈 General Stats</h3>
+                        <div id="general-stats" class="stats-grid">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                    <div class="stats-section">
+                        <h3>🏆 Achievements (<span id="achievement-count">0</span>/<span id="achievement-total">0</span>)</h3>
+                        <div id="achievements-list" class="achievements-grid">
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Event Log -->
+        <div id="event-log">
+            <div class="log-header">
+                <span>📜 Event Log</span>
+                <button id="btn-toggle-log" class="btn-tiny">▼</button>
+            </div>
+            <div id="log-messages" class="log-messages">
+                <div class="log-entry">Welcome to Automata! Click resources to begin gathering.</div>
+            </div>
+        </div>
+
+        <!-- Toast Container -->
+        <div id="toast-container"></div>
+
+        <!-- Settings Modal -->
+        <div id="modal-overlay" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>⚙️ Settings</h3>
+                    <button class="btn-close" id="btn-close-modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="setting-row">
+                        <label>Auto-save interval</label>
+                        <select id="setting-autosave">
+                            <option value="30">30 seconds</option>
+                            <option value="60" selected>60 seconds</option>
+                            <option value="120">2 minutes</option>
+                            <option value="300">5 minutes</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Number format</label>
+                        <select id="setting-notation">
+                            <option value="suffix" selected>Suffix (K, M, B)</option>
+                            <option value="scientific">Scientific</option>
+                            <option value="plain">Plain</option>
+                        </select>
+                    </div>
+                    <div class="setting-row">
+                        <label>Offline progress</label>
+                        <select id="setting-offline">
+                            <option value="1" selected>Enabled</option>
+                            <option value="0">Disabled</option>
+                        </select>
+                    </div>
+                    <div class="setting-actions">
+                        <button id="btn-export" class="btn-action">📤 Export Save</button>
+                        <button id="btn-import" class="btn-action">📥 Import Save</button>
+                        <button id="btn-hard-reset" class="btn-action btn-danger">🗑️ Hard Reset</button>
+                    </div>
+                    <textarea id="save-data-area" class="save-textarea hidden" placeholder="Paste save data here..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- Offline Progress Modal -->
+        <div id="offline-modal" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>⏰ Welcome Back!</h3>
+                </div>
+                <div class="modal-body">
+                    <p>You were away for <span id="offline-time">0</span>.</p>
+                    <p>While you were gone, you earned:</p>
+                    <div id="offline-gains" class="offline-gains"></div>
+                    <button id="btn-close-offline" class="btn-action" style="margin-top:1rem;">Collect & Continue</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
