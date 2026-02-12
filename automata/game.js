@@ -1,1848 +1,1656 @@
-/* ============================================
-   AUTOMATA - Resource Management & Automation Game
-   Complete Game Engine
-   ============================================ */
+// ============================================================
+// AUTOMATA — Resource Automation Game v2.0
+// ============================================================
 
-// ==========================================
-// NUMBER FORMATTING
-// ==========================================
-const SUFFIXES = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+(function () {
+    'use strict';
 
-function formatNumber(n, decimals = 1) {
-    if (n === undefined || n === null || isNaN(n)) return '0';
-    if (n < 0) return '-' + formatNumber(-n, decimals);
-    if (n < 1000) return n < 10 ? n.toFixed(decimals) : Math.floor(n).toString();
-    let tier = Math.floor(Math.log10(Math.abs(n)) / 3);
-    if (tier >= SUFFIXES.length) tier = SUFFIXES.length - 1;
-    const suffix = SUFFIXES[tier];
-    const scale = Math.pow(10, tier * 3);
-    const scaled = n / scale;
-    return scaled.toFixed(decimals) + suffix;
-}
+    // ===== CONSTANTS & DEFINITIONS =====
 
-function formatRate(n) {
-    const sign = n >= 0 ? '+' : '';
-    return sign + formatNumber(n, 1) + '/s';
-}
+    const SAVE_KEY = 'automata_save_v2';
+    const AUTO_SAVE_INTERVAL = 30000;
+    const TICK_RATE = 20; // ticks per second
+    const MAX_OFFLINE_HOURS = 8;
+    const EVENT_CHANCE = 0.02; // per second
 
-function formatTime(seconds) {
-    if (seconds < 60) return Math.floor(seconds) + 's';
-    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + Math.floor(seconds % 60) + 's';
-    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
-    return Math.floor(seconds / 86400) + 'd ' + Math.floor((seconds % 86400) / 3600) + 'h';
-}
+    // Resource definitions
+    const RESOURCES = {
+        energy:   { name: 'Energy',        icon: '⚡', tier: 1, baseCap: 500 },
+        minerals: { name: 'Minerals',      icon: '⛏️', tier: 1, baseCap: 500 },
+        data:     { name: 'Data',          icon: '📊', tier: 1, baseCap: 500 },
+        circuits: { name: 'Circuits',      icon: '🔌', tier: 2, baseCap: 200 },
+        alloys:   { name: 'Alloys',        icon: '🔩', tier: 2, baseCap: 200 },
+        code:     { name: 'Code',          icon: '💻', tier: 2, baseCap: 200 },
+        aiCores:  { name: 'AI Cores',      icon: '🧠', tier: 3, baseCap: 50 },
+        qCells:   { name: 'Quantum Cells', icon: '⚛️', tier: 3, baseCap: 50 },
+        nanofibers:{ name: 'Nanofibers',   icon: '🧬', tier: 3, baseCap: 50 },
+        darkMatter:{ name: 'Dark Matter',  icon: '🌀', tier: 4, baseCap: 20 },
+        antimatter:{ name: 'Antimatter',   icon: '✨', tier: 4, baseCap: 20 },
+        shards:   { name: 'Singularity Shards', icon: '🔮', tier: 5, baseCap: Infinity },
+    };
 
-// ==========================================
-// GAME DATA DEFINITIONS
-// ==========================================
+    const RESOURCE_IDS = Object.keys(RESOURCES);
 
-/** Resource definitions with caps and tiers */
-const RESOURCES = {
-    // Tier 1 - Raw
-    energy:       { name: 'Energy',        icon: '⚡', tier: 1, baseCap: 500 },
-    minerals:     { name: 'Minerals',      icon: '💎', tier: 1, baseCap: 500 },
-    data:         { name: 'Data',          icon: '📊', tier: 1, baseCap: 500 },
-    // Tier 2 - Processed
-    circuits:     { name: 'Circuits',      icon: '🔌', tier: 2, baseCap: 200 },
-    alloys:       { name: 'Alloys',        icon: '🔩', tier: 2, baseCap: 200 },
-    code:         { name: 'Code Modules',  icon: '💻', tier: 2, baseCap: 200 },
-    // Tier 3 - Advanced
-    aiCores:      { name: 'AI Cores',      icon: '🧠', tier: 3, baseCap: 50 },
-    quantumCells: { name: 'Quantum Cells', icon: '⚛️', tier: 3, baseCap: 50 },
-    nanofibers:   { name: 'Nanofibers',    icon: '🧬', tier: 3, baseCap: 50 },
-    // Tier 4 - Prestige (no cap)
-    shards:       { name: 'Singularity Shards', icon: '🔮', tier: 4, baseCap: Infinity },
-};
+    // Crafting recipes
+    const RECIPES = [
+        { id: 'circuits',  output: 'circuits',  amount: 1, costs: { energy: 20, data: 10 } },
+        { id: 'alloys',    output: 'alloys',    amount: 1, costs: { minerals: 15, energy: 10 } },
+        { id: 'code',      output: 'code',      amount: 1, costs: { data: 15, energy: 5 } },
+        { id: 'aiCores',   output: 'aiCores',   amount: 1, costs: { circuits: 10, code: 8 } },
+        { id: 'qCells',    output: 'qCells',    amount: 1, costs: { alloys: 8, circuits: 6 } },
+        { id: 'nanofibers',output: 'nanofibers', amount: 1, costs: { code: 6, alloys: 8 } },
+        { id: 'darkMatter',output: 'darkMatter', amount: 1, costs: { aiCores: 5, qCells: 5 } },
+        { id: 'antimatter',output: 'antimatter', amount: 1, costs: { qCells: 5, nanofibers: 5 } },
+    ];
 
-/** Crafting recipes */
-const RECIPES = {
-    circuits:     { output: 'circuits',     amount: 1, inputs: { energy: 20, data: 10 } },
-    alloys:       { output: 'alloys',       amount: 1, inputs: { minerals: 25, energy: 10 } },
-    code:         { output: 'code',         amount: 1, inputs: { data: 20, energy: 15 } },
-    aiCores:      { output: 'aiCores',      amount: 1, inputs: { circuits: 10, code: 8 } },
-    quantumCells: { output: 'quantumCells', amount: 1, inputs: { circuits: 8, alloys: 10 } },
-    nanofibers:   { output: 'nanofibers',   amount: 1, inputs: { alloys: 8, code: 10 } },
-};
+    // Building definitions
+    const BUILDING_CATEGORIES = {
+        extractors: { name: '⛏️ Extractors', desc: 'Produce Tier 1 resources' },
+        processors: { name: '🔧 Processors', desc: 'Convert T1 → T2' },
+        factories:  { name: '🏭 Factories', desc: 'Convert T2 → T3' },
+        advFactories: { name: '⚗️ Advanced Factories', desc: 'Convert T3 → T4' },
+        storage:    { name: '📦 Storage', desc: 'Increase resource caps' },
+        power:      { name: '⚡ Power', desc: 'Provide MW for buildings' },
+    };
 
-/** Building definitions */
-const BUILDINGS = {
-    // Extractors
-    energyDrill:    { name: 'Energy Drill',     icon: '⛏️', category: 'extractors', desc: 'Generates energy passively', produces: { energy: 1.5 }, consumes: {}, baseCost: { energy: 15 }, costScale: 1.15, powerUse: 0, unlocked: true },
-    mineralMiner:   { name: 'Mineral Miner',    icon: '💎', category: 'extractors', desc: 'Extracts minerals from the ground', produces: { minerals: 1.2 }, consumes: {}, baseCost: { minerals: 10, energy: 20 }, costScale: 1.15, powerUse: 1, unlocked: true },
-    dataScanner:    { name: 'Data Scanner',     icon: '📡', category: 'extractors', desc: 'Scans for data fragments', produces: { data: 1.0 }, consumes: {}, baseCost: { energy: 25, data: 5 }, costScale: 1.15, powerUse: 1, unlocked: true },
-    // Processors
-    circuitFoundry: { name: 'Circuit Foundry',  icon: '🔌', category: 'processors', desc: 'Converts energy + data into circuits', produces: { circuits: 0.3 }, consumes: { energy: 2, data: 1 }, baseCost: { energy: 100, data: 50 }, costScale: 1.18, powerUse: 3, unlocked: false },
-    alloySmelter:   { name: 'Alloy Smelter',    icon: '🔩', category: 'processors', desc: 'Smelts minerals + energy into alloys', produces: { alloys: 0.25 }, consumes: { minerals: 2.5, energy: 1 }, baseCost: { minerals: 80, energy: 80 }, costScale: 1.18, powerUse: 3, unlocked: false },
-    codeCompiler:   { name: 'Code Compiler',    icon: '💻', category: 'processors', desc: 'Compiles data + energy into code modules', produces: { code: 0.25 }, consumes: { data: 2, energy: 1.5 }, baseCost: { data: 80, energy: 60 }, costScale: 1.18, powerUse: 3, unlocked: false },
-    // Factories
-    aiLab:          { name: 'AI Lab',           icon: '🧠', category: 'factories', desc: 'Produces AI Cores from circuits + code', produces: { aiCores: 0.05 }, consumes: { circuits: 0.5, code: 0.4 }, baseCost: { circuits: 50, code: 40, energy: 200 }, costScale: 1.22, powerUse: 8, unlocked: false },
-    quantumReactor: { name: 'Quantum Reactor',  icon: '⚛️', category: 'factories', desc: 'Creates quantum cells from circuits + alloys', produces: { quantumCells: 0.04 }, consumes: { circuits: 0.4, alloys: 0.5 }, baseCost: { circuits: 40, alloys: 50, energy: 200 }, costScale: 1.22, powerUse: 8, unlocked: false },
-    nanoAssembler:  { name: 'Nano Assembler',   icon: '🧬', category: 'factories', desc: 'Assembles nanofibers from alloys + code', produces: { nanofibers: 0.04 }, consumes: { alloys: 0.4, code: 0.5 }, baseCost: { alloys: 40, code: 50, energy: 200 }, costScale: 1.22, powerUse: 8, unlocked: false },
-    // Storage
-    energyBank:     { name: 'Energy Bank',      icon: '🔋', category: 'storage', desc: '+500 energy storage', produces: {}, consumes: {}, baseCost: { energy: 50, minerals: 30 }, costScale: 1.2, powerUse: 0, unlocked: true, storageBonus: { energy: 500 } },
-    mineralVault:   { name: 'Mineral Vault',    icon: '🏦', category: 'storage', desc: '+500 mineral storage', produces: {}, consumes: {}, baseCost: { minerals: 50, energy: 30 }, costScale: 1.2, powerUse: 0, unlocked: true, storageBonus: { minerals: 500 } },
-    dataArchive:    { name: 'Data Archive',     icon: '💾', category: 'storage', desc: '+500 data storage', produces: {}, consumes: {}, baseCost: { data: 40, energy: 40 }, costScale: 1.2, powerUse: 0, unlocked: true, storageBonus: { data: 500 } },
-    advancedStorage:{ name: 'Advanced Storage',  icon: '📦', category: 'storage', desc: '+200 T2 storage (all)', produces: {}, consumes: {}, baseCost: { circuits: 20, alloys: 20, code: 20 }, costScale: 1.25, powerUse: 1, unlocked: false, storageBonus: { circuits: 200, alloys: 200, code: 200 } },
-    quantumVault:   { name: 'Quantum Vault',    icon: '🔐', category: 'storage', desc: '+50 T3 storage (all)', produces: {}, consumes: {}, baseCost: { aiCores: 5, quantumCells: 5, nanofibers: 5 }, costScale: 1.3, powerUse: 2, unlocked: false, storageBonus: { aiCores: 50, quantumCells: 50, nanofibers: 50 } },
-    // Power
-    solarPanel:     { name: 'Solar Panel',      icon: '☀️', category: 'power', desc: '+5 MW power generation', produces: {}, consumes: {}, baseCost: { energy: 30, minerals: 20 }, costScale: 1.12, powerUse: -5, unlocked: true },
-    fusionPlant:    { name: 'Fusion Plant',     icon: '🌟', category: 'power', desc: '+25 MW power generation', produces: {}, consumes: {}, baseCost: { alloys: 30, circuits: 20, energy: 500 }, costScale: 1.2, powerUse: -25, unlocked: false },
-    darkMatterGen:  { name: 'Dark Matter Gen',  icon: '🌑', category: 'power', desc: '+100 MW power generation', produces: {}, consumes: {}, baseCost: { quantumCells: 10, aiCores: 5, nanofibers: 5 }, costScale: 1.25, powerUse: -100, unlocked: false },
-};
+    const BUILDINGS = {
+        // Extractors
+        energyDrill:   { name: '⚡ Energy Drill',    cat: 'extractors', produces: { energy: 1 }, consumes: {}, costs: { energy: 10 }, powerUse: 1, desc: '+1 Energy/s' },
+        mineralMiner:  { name: '⛏️ Mineral Miner',   cat: 'extractors', produces: { minerals: 1 }, consumes: {}, costs: { minerals: 10 }, powerUse: 1, desc: '+1 Mineral/s' },
+        dataScanner:   { name: '📊 Data Scanner',    cat: 'extractors', produces: { data: 1 }, consumes: {}, costs: { data: 10 }, powerUse: 1, desc: '+1 Data/s' },
+        // Processors
+        circuitFoundry:{ name: '🔌 Circuit Foundry', cat: 'processors', produces: { circuits: 0.5 }, consumes: { energy: 2, data: 1 }, costs: { energy: 50, data: 30 }, powerUse: 2, desc: '+0.5 Circuits/s (uses 2⚡+1📊/s)', unlock: 'processorBlueprints' },
+        alloySmelter:  { name: '🔩 Alloy Smelter',   cat: 'processors', produces: { alloys: 0.5 }, consumes: { minerals: 1.5, energy: 1 }, costs: { minerals: 40, energy: 25 }, powerUse: 2, desc: '+0.5 Alloys/s (uses 1.5⛏️+1⚡/s)', unlock: 'processorBlueprints' },
+        codeCompiler:  { name: '💻 Code Compiler',   cat: 'processors', produces: { code: 0.5 }, consumes: { data: 1.5, energy: 0.5 }, costs: { data: 40, energy: 15 }, powerUse: 2, desc: '+0.5 Code/s (uses 1.5📊+0.5⚡/s)', unlock: 'processorBlueprints' },
+        // Factories
+        aiLab:         { name: '🧠 AI Lab',          cat: 'factories', produces: { aiCores: 0.2 }, consumes: { circuits: 1, code: 0.8 }, costs: { circuits: 100, code: 80 }, powerUse: 5, desc: '+0.2 AI Cores/s', unlock: 'factoryBlueprints' },
+        quantumReactor:{ name: '⚛️ Quantum Reactor', cat: 'factories', produces: { qCells: 0.2 }, consumes: { alloys: 0.8, circuits: 0.6 }, costs: { alloys: 80, circuits: 60 }, powerUse: 5, desc: '+0.2 Q.Cells/s', unlock: 'factoryBlueprints' },
+        nanoAssembler: { name: '🧬 Nano Assembler',  cat: 'factories', produces: { nanofibers: 0.2 }, consumes: { code: 0.6, alloys: 0.8 }, costs: { code: 60, alloys: 80 }, powerUse: 5, desc: '+0.2 Nanofibers/s', unlock: 'factoryBlueprints' },
+        // Advanced Factories
+        dmCondenser:   { name: '🌀 DM Condenser',    cat: 'advFactories', produces: { darkMatter: 0.05 }, consumes: { aiCores: 0.5, qCells: 0.5 }, costs: { aiCores: 20, qCells: 20 }, powerUse: 10, desc: '+0.05 Dark Matter/s', unlock: 'advFactoryBlueprints' },
+        amForge:       { name: '✨ AM Forge',         cat: 'advFactories', produces: { antimatter: 0.05 }, consumes: { qCells: 0.5, nanofibers: 0.5 }, costs: { qCells: 20, nanofibers: 20 }, powerUse: 10, desc: '+0.05 Antimatter/s', unlock: 'advFactoryBlueprints' },
+        // Storage
+        energyBank:    { name: '⚡ Energy Bank',      cat: 'storage', produces: {}, consumes: {}, costs: { energy: 50 }, powerUse: 0, desc: '+500 Energy cap', capBonus: { energy: 500 } },
+        mineralVault:  { name: '⛏️ Mineral Vault',    cat: 'storage', produces: {}, consumes: {}, costs: { minerals: 50 }, powerUse: 0, desc: '+500 Minerals cap', capBonus: { minerals: 500 } },
+        dataArchive:   { name: '📊 Data Archive',     cat: 'storage', produces: {}, consumes: {}, costs: { data: 50 }, powerUse: 0, desc: '+500 Data cap', capBonus: { data: 500 } },
+        advStorage:    { name: '🔧 Advanced Storage', cat: 'storage', produces: {}, consumes: {}, costs: { circuits: 30, alloys: 30, code: 30 }, powerUse: 0, desc: '+200 all T2 caps', capBonus: { circuits: 200, alloys: 200, code: 200 } },
+        quantumVault:  { name: '⚛️ Quantum Vault',    cat: 'storage', produces: {}, consumes: {}, costs: { aiCores: 15, qCells: 15, nanofibers: 15 }, powerUse: 0, desc: '+50 all T3 caps', capBonus: { aiCores: 50, qCells: 50, nanofibers: 50 } },
+        exoticContainer:{ name: '🌀 Exotic Container', cat: 'storage', produces: {}, consumes: {}, costs: { darkMatter: 5, antimatter: 5 }, powerUse: 0, desc: '+20 all T4 caps', capBonus: { darkMatter: 20, antimatter: 20 } },
+        // Power
+        solarPanel:    { name: '☀️ Solar Panel',      cat: 'power', produces: {}, consumes: {}, costs: { energy: 25, minerals: 10 }, powerUse: 0, desc: '+5 MW', powerGen: 5 },
+        fusionPlant:   { name: '🔥 Fusion Plant',     cat: 'power', produces: {}, consumes: {}, costs: { energy: 100, alloys: 50 }, powerUse: 0, desc: '+25 MW', powerGen: 25 },
+        dmGenerator:   { name: '🌀 DM Generator',     cat: 'power', produces: {}, consumes: {}, costs: { darkMatter: 20 }, powerUse: 0, desc: '+100 MW', powerGen: 100 },
+    };
 
-/** Research definitions - 35 techs */
-const RESEARCH = {
-    // Efficiency branch
-    efficientDrills:    { name: 'Efficient Drills',     branch: 'efficiency', desc: 'Energy drills produce 50% more', cost: { energy: 100, data: 50 }, requires: [], effect: () => { Game.researchBonuses.energyDrillMult = 1.5; } },
-    efficientMiners:    { name: 'Efficient Miners',     branch: 'efficiency', desc: 'Mineral miners produce 50% more', cost: { minerals: 100, energy: 50 }, requires: [], effect: () => { Game.researchBonuses.mineralMinerMult = 1.5; } },
-    efficientScanners:  { name: 'Efficient Scanners',   branch: 'efficiency', desc: 'Data scanners produce 50% more', cost: { data: 100, energy: 50 }, requires: [], effect: () => { Game.researchBonuses.dataScannerMult = 1.5; } },
-    advancedRefining:   { name: 'Advanced Refining',    branch: 'efficiency', desc: 'Processors use 25% less input', cost: { circuits: 30, energy: 200 }, requires: ['efficientDrills'], effect: () => { Game.researchBonuses.processorEfficiency = 0.75; } },
-    quantumOptimize:    { name: 'Quantum Optimization', branch: 'efficiency', desc: 'All production +25%', cost: { quantumCells: 5, aiCores: 3 }, requires: ['advancedRefining'], effect: () => { Game.researchBonuses.globalProductionMult = 1.25; } },
-    hyperEfficiency:    { name: 'Hyper Efficiency',     branch: 'efficiency', desc: 'All production +50% (stacks)', cost: { quantumCells: 15, aiCores: 10, nanofibers: 10 }, requires: ['quantumOptimize'], effect: () => { Game.researchBonuses.globalProductionMult *= 1.5; } },
-    
-    // Capacity branch
-    expandedStorage1:   { name: 'Expanded Storage I',   branch: 'capacity', desc: 'T1 base storage +500', cost: { energy: 80, minerals: 80 }, requires: [], effect: () => { Game.researchBonuses.t1StorageBonus += 500; } },
-    expandedStorage2:   { name: 'Expanded Storage II',  branch: 'capacity', desc: 'T1 base storage +1000 more', cost: { circuits: 20, alloys: 20 }, requires: ['expandedStorage1'], effect: () => { Game.researchBonuses.t1StorageBonus += 1000; } },
-    t2Storage:          { name: 'T2 Storage Tech',      branch: 'capacity', desc: 'T2 base storage +200', cost: { circuits: 40, energy: 200 }, requires: ['expandedStorage1'], effect: () => { Game.researchBonuses.t2StorageBonus += 200; } },
-    t3Storage:          { name: 'T3 Storage Tech',      branch: 'capacity', desc: 'T3 base storage +50', cost: { aiCores: 5, quantumCells: 5 }, requires: ['t2Storage'], effect: () => { Game.researchBonuses.t3StorageBonus += 50; } },
-    massStorage:        { name: 'Mass Storage',         branch: 'capacity', desc: 'All storage buildings 2x effective', cost: { nanofibers: 10, quantumCells: 10 }, requires: ['t3Storage'], effect: () => { Game.researchBonuses.storageBuildingMult = 2; } },
-    infiniteWarehouse:  { name: 'Infinite Warehouse',   branch: 'capacity', desc: 'All storage +100%', cost: { aiCores: 20, quantumCells: 15, nanofibers: 15 }, requires: ['massStorage'], effect: () => { Game.researchBonuses.storageGlobalMult = 2; } },
+    const COST_SCALE = 1.15;
 
-    // Automation branch
-    basicAutomation:    { name: 'Basic Automation',     branch: 'automation', desc: 'Unlock auto-buyers for extractors', cost: { data: 100, circuits: 10 }, requires: [], effect: () => { Game.automationUnlocks.autoBuyExtractors = true; } },
-    autoCrafting:       { name: 'Auto-Crafting',        branch: 'automation', desc: 'Unlock auto-crafters for T2', cost: { circuits: 30, code: 20 }, requires: ['basicAutomation'], effect: () => { Game.automationUnlocks.autoCraftT2 = true; } },
-    advancedAutomation: { name: 'Advanced Automation',  branch: 'automation', desc: 'Unlock auto-buyers for processors', cost: { code: 40, circuits: 40 }, requires: ['autoCrafting'], effect: () => { Game.automationUnlocks.autoBuyProcessors = true; } },
-    smartRouting:       { name: 'Smart Routing',        branch: 'automation', desc: 'Unlock auto-crafters for T3', cost: { aiCores: 5, code: 50 }, requires: ['advancedAutomation'], effect: () => { Game.automationUnlocks.autoCraftT3 = true; } },
-    factoryAutomation:  { name: 'Factory Automation',   branch: 'automation', desc: 'Unlock auto-buyers for factories', cost: { aiCores: 10, code: 60 }, requires: ['smartRouting'], effect: () => { Game.automationUnlocks.autoBuyFactories = true; } },
-    autoSelling:        { name: 'Auto-Selling',         branch: 'automation', desc: 'Unlock auto-sellers', cost: { aiCores: 8, circuits: 50 }, requires: ['advancedAutomation'], effect: () => { Game.automationUnlocks.autoSell = true; } },
-    fullAutomation:     { name: 'Full Automation',      branch: 'automation', desc: 'Auto-buyers for storage & power', cost: { aiCores: 15, quantumCells: 10, nanofibers: 10 }, requires: ['factoryAutomation'], effect: () => { Game.automationUnlocks.autoBuyAll = true; } },
+    // Research definitions
+    const RESEARCH = {
+        // Efficiency Branch
+        optGathering1:    { name: 'Optimized Gathering I',   branch: 'efficiency', desc: '+25% click power', costs: { energy: 50, data: 50 }, time: 10, prereqs: [], effect: { clickMult: 0.25 } },
+        optGathering2:    { name: 'Optimized Gathering II',  branch: 'efficiency', desc: '+50% click power', costs: { energy: 200, data: 200 }, time: 20, prereqs: ['optGathering1'], effect: { clickMult: 0.5 } },
+        optGathering3:    { name: 'Optimized Gathering III', branch: 'efficiency', desc: '+100% click power', costs: { energy: 1000, data: 1000 }, time: 40, prereqs: ['optGathering2'], effect: { clickMult: 1.0 } },
+        effExtractors1:   { name: 'Efficient Extractors I',  branch: 'efficiency', desc: '+50% extractor output', costs: { energy: 100, minerals: 100 }, time: 15, prereqs: [], effect: { extractorMult: 0.5 } },
+        effExtractors2:   { name: 'Efficient Extractors II', branch: 'efficiency', desc: '+100% extractor output', costs: { energy: 500, minerals: 500 }, time: 30, prereqs: ['effExtractors1'], effect: { extractorMult: 1.0 } },
+        effProcessors1:   { name: 'Efficient Processors I',  branch: 'efficiency', desc: '+50% processor output', costs: { circuits: 50, alloys: 50 }, time: 25, prereqs: ['processorBlueprints'], effect: { processorMult: 0.5 } },
+        effProcessors2:   { name: 'Efficient Processors II', branch: 'efficiency', desc: '+100% processor output', costs: { circuits: 150, alloys: 150 }, time: 40, prereqs: ['effProcessors1'], effect: { processorMult: 1.0 } },
+        effFactories:     { name: 'Efficient Factories',     branch: 'efficiency', desc: '+50% factory output', costs: { aiCores: 20, qCells: 20 }, time: 50, prereqs: ['factoryBlueprints'], effect: { factoryMult: 0.5 } },
 
-    // Expansion branch
-    unlockProcessors:   { name: 'Processing Tech',     branch: 'expansion', desc: 'Unlock processor buildings', cost: { energy: 150, minerals: 100, data: 100 }, requires: [], effect: () => { Game.unlockBuildings(['circuitFoundry', 'alloySmelter', 'codeCompiler', 'advancedStorage']); } },
-    unlockFactories:    { name: 'Factory Tech',        branch: 'expansion', desc: 'Unlock factory buildings', cost: { circuits: 60, alloys: 60, code: 60 }, requires: ['unlockProcessors'], effect: () => { Game.unlockBuildings(['aiLab', 'quantumReactor', 'nanoAssembler', 'quantumVault']); } },
-    fusionTech:         { name: 'Fusion Technology',    branch: 'expansion', desc: 'Unlock Fusion Plants', cost: { circuits: 40, alloys: 30, energy: 300 }, requires: ['unlockProcessors'], effect: () => { Game.unlockBuildings(['fusionPlant']); } },
-    darkMatterTech:     { name: 'Dark Matter Tech',     branch: 'expansion', desc: 'Unlock Dark Matter Generators', cost: { quantumCells: 8, aiCores: 5 }, requires: ['unlockFactories', 'fusionTech'], effect: () => { Game.unlockBuildings(['darkMatterGen']); } },
-    doubleExtractors:   { name: 'Extractor Overdrive',  branch: 'expansion', desc: 'Extractors produce 2x', cost: { alloys: 50, circuits: 50 }, requires: ['unlockProcessors'], effect: () => { Game.researchBonuses.extractorMult = 2; } },
-    doubleProcessors:   { name: 'Processor Overdrive',  branch: 'expansion', desc: 'Processors produce 2x', cost: { aiCores: 10, nanofibers: 8 }, requires: ['unlockFactories', 'doubleExtractors'], effect: () => { Game.researchBonuses.processorMult = 2; } },
-    doubleFactories:    { name: 'Factory Overdrive',    branch: 'expansion', desc: 'Factories produce 2x', cost: { aiCores: 20, quantumCells: 15, nanofibers: 15 }, requires: ['doubleProcessors'], effect: () => { Game.researchBonuses.factoryMult = 2; } },
+        // Capacity Branch
+        expStorage1:      { name: 'Expanded Storage I',      branch: 'capacity', desc: '+100% T1 caps', costs: { energy: 100, minerals: 100, data: 100 }, time: 10, prereqs: [], effect: { t1CapMult: 1.0 } },
+        expStorage2:      { name: 'Expanded Storage II',     branch: 'capacity', desc: '+200% T1 caps', costs: { energy: 500, minerals: 500, data: 500 }, time: 20, prereqs: ['expStorage1'], effect: { t1CapMult: 2.0 } },
+        expStorage3:      { name: 'Expanded Storage III',    branch: 'capacity', desc: '+500% T1 caps', costs: { energy: 2000, minerals: 2000, data: 2000 }, time: 35, prereqs: ['expStorage2'], effect: { t1CapMult: 5.0 } },
+        advContainers1:   { name: 'Advanced Containers I',   branch: 'capacity', desc: '+100% T2 caps', costs: { circuits: 50, alloys: 50, code: 50 }, time: 20, prereqs: ['processorBlueprints'], effect: { t2CapMult: 1.0 } },
+        advContainers2:   { name: 'Advanced Containers II',  branch: 'capacity', desc: '+200% T2 caps', costs: { circuits: 150, alloys: 150, code: 150 }, time: 35, prereqs: ['advContainers1'], effect: { t2CapMult: 2.0 } },
+        quantumStorage:   { name: 'Quantum Storage',         branch: 'capacity', desc: '+100% T3 caps', costs: { aiCores: 15, qCells: 15, nanofibers: 15 }, time: 40, prereqs: ['factoryBlueprints'], effect: { t3CapMult: 1.0 } },
+        exoticContainment:{ name: 'Exotic Containment',      branch: 'capacity', desc: '+100% T4 caps', costs: { darkMatter: 10, antimatter: 10 }, time: 50, prereqs: ['advFactoryBlueprints'], effect: { t4CapMult: 1.0 } },
 
-    // Transcendence branch
-    singularityTheory:  { name: 'Singularity Theory',  branch: 'transcendence', desc: 'Unlock the Prestige system', cost: { aiCores: 15, quantumCells: 10, nanofibers: 10 }, requires: ['unlockFactories'], effect: () => { Game.prestigeUnlocked = true; } },
-    shardAmplifier:     { name: 'Shard Amplifier',     branch: 'transcendence', desc: 'Earn 50% more shards on prestige', cost: { aiCores: 25, quantumCells: 20, nanofibers: 20 }, requires: ['singularityTheory'], effect: () => { Game.researchBonuses.shardMult = 1.5; } },
-    temporalEcho:       { name: 'Temporal Echo',        branch: 'transcendence', desc: 'Start with 50 of each T1 after prestige', cost: { aiCores: 30, quantumCells: 25, nanofibers: 25 }, requires: ['shardAmplifier'], effect: () => { Game.researchBonuses.prestigeStartBonus = 50; } },
-    dimensionalRift:    { name: 'Dimensional Rift',     branch: 'transcendence', desc: 'All production x2 per prestige count', cost: { aiCores: 40, quantumCells: 30, nanofibers: 30 }, requires: ['temporalEcho'], effect: () => { Game.researchBonuses.prestigeProductionMult = true; } },
-    transcendence:      { name: 'Transcendence',        branch: 'transcendence', desc: 'Ultimate tech: all production x5', cost: { aiCores: 50, quantumCells: 50, nanofibers: 50 }, requires: ['dimensionalRift'], effect: () => { Game.researchBonuses.transcendenceMult = 5; } },
-    clickPower1:        { name: 'Enhanced Clicking',    branch: 'efficiency', desc: 'Manual gathering gives 5x resources', cost: { energy: 200, minerals: 200, data: 200 }, requires: ['efficientDrills', 'efficientMiners', 'efficientScanners'], effect: () => { Game.researchBonuses.clickMult = 5; } },
-    clickPower2:        { name: 'Mega Clicking',        branch: 'efficiency', desc: 'Manual gathering gives 25x resources', cost: { circuits: 100, alloys: 100, code: 100 }, requires: ['clickPower1'], effect: () => { Game.researchBonuses.clickMult = 25; } },
-};
+        // Automation Branch
+        autoExtractors:   { name: 'Auto-Extractors',         branch: 'automation', desc: 'Auto-buy extractors', costs: { energy: 200, data: 200 }, time: 15, prereqs: ['effExtractors1'], effect: { autoExtractors: true } },
+        autoProcessors:   { name: 'Auto-Processors',         branch: 'automation', desc: 'Auto-buy processors', costs: { circuits: 100, code: 100 }, time: 25, prereqs: ['processorBlueprints', 'autoExtractors'], effect: { autoProcessors: true } },
+        autoCrafting1:    { name: 'Auto-Crafting I',          branch: 'automation', desc: 'Auto-craft T2', costs: { circuits: 50, alloys: 50, code: 50 }, time: 20, prereqs: ['processorBlueprints'], effect: { autoCraftT2: true } },
+        autoCrafting2:    { name: 'Auto-Crafting II',         branch: 'automation', desc: 'Auto-craft T3', costs: { aiCores: 20, qCells: 20, nanofibers: 20 }, time: 35, prereqs: ['autoCrafting1', 'factoryBlueprints'], effect: { autoCraftT3: true } },
+        autoCrafting3:    { name: 'Auto-Crafting III',        branch: 'automation', desc: 'Auto-craft T4', costs: { darkMatter: 10, antimatter: 10 }, time: 50, prereqs: ['autoCrafting2', 'advFactoryBlueprints'], effect: { autoCraftT4: true } },
+        autoFactories:    { name: 'Auto-Factories',           branch: 'automation', desc: 'Auto-buy factories', costs: { aiCores: 30, qCells: 30 }, time: 40, prereqs: ['factoryBlueprints', 'autoProcessors'], effect: { autoFactories: true } },
+        smartAutomation:  { name: 'Smart Automation',         branch: 'automation', desc: 'Automation 2x faster', costs: { aiCores: 40, code: 200 }, time: 45, prereqs: ['autoFactories'], effect: { autoSpeed: 2 } },
 
-/** Prestige upgrades */
-const PRESTIGE_UPGRADES = {
-    shardBoost1:     { name: 'Shard Resonance I',    desc: 'All production +10% per shard (up to 100%)', cost: 1, maxLevel: 1 },
-    shardBoost2:     { name: 'Shard Resonance II',   desc: 'All production +25% per shard (up to 250%)', cost: 5, maxLevel: 1, requires: 'shardBoost1' },
-    startEnergy:     { name: 'Energy Jumpstart',     desc: 'Start with 200 energy after prestige', cost: 2, maxLevel: 1 },
-    startMinerals:   { name: 'Mineral Jumpstart',    desc: 'Start with 200 minerals after prestige', cost: 2, maxLevel: 1 },
-    startData:       { name: 'Data Jumpstart',       desc: 'Start with 200 data after prestige', cost: 2, maxLevel: 1 },
-    keepExtractors:  { name: 'Extractor Memory',     desc: 'Keep 1 of each extractor after prestige', cost: 3, maxLevel: 1 },
-    keepResearch1:   { name: 'Research Memory I',    desc: 'Keep T1 efficiency research after prestige', cost: 5, maxLevel: 1 },
-    autoUnlock:      { name: 'Auto-Start',           desc: 'Start with basic automation unlocked', cost: 4, maxLevel: 1 },
-    shardMultiplier: { name: 'Shard Multiplier',     desc: 'Earn 2x shards on prestige', cost: 10, maxLevel: 1 },
-    storageBoost:    { name: 'Expanded Foundations',  desc: 'All base storage x2', cost: 3, maxLevel: 1 },
-    powerBoost:      { name: 'Power Surplus',        desc: 'Start with +50 MW base power', cost: 4, maxLevel: 1 },
-    clickBoost:      { name: 'Click Amplifier',      desc: 'Manual clicks give 10x resources', cost: 3, maxLevel: 1 },
-};
+        // Expansion Branch
+        processorBlueprints: { name: 'Processor Blueprints', branch: 'expansion', desc: 'Unlock processors', costs: { energy: 80, minerals: 80, data: 80 }, time: 12, prereqs: [], effect: { unlockProcessors: true } },
+        factoryBlueprints:   { name: 'Factory Blueprints',   branch: 'expansion', desc: 'Unlock factories', costs: { circuits: 80, alloys: 80, code: 80 }, time: 25, prereqs: ['processorBlueprints'], effect: { unlockFactories: true } },
+        advFactoryBlueprints:{ name: 'Adv. Factory Blueprints', branch: 'expansion', desc: 'Unlock T4 buildings', costs: { aiCores: 30, qCells: 30, nanofibers: 30 }, time: 40, prereqs: ['factoryBlueprints'], effect: { unlockAdvFactories: true } },
+        powerGrid1:          { name: 'Power Grid I',         branch: 'expansion', desc: '+50% power capacity', costs: { energy: 200, minerals: 100 }, time: 15, prereqs: [], effect: { powerCapMult: 0.5 } },
+        powerGrid2:          { name: 'Power Grid II',        branch: 'expansion', desc: '+100% power capacity', costs: { alloys: 100, circuits: 100 }, time: 30, prereqs: ['powerGrid1', 'processorBlueprints'], effect: { powerCapMult: 1.0 } },
+        overdrive1:          { name: 'Overdrive I',          branch: 'expansion', desc: '+100% all production', costs: { circuits: 200, alloys: 200 }, time: 35, prereqs: ['powerGrid2'], effect: { globalMult: 1.0 } },
+        overdrive2:          { name: 'Overdrive II',         branch: 'expansion', desc: '+200% all production', costs: { aiCores: 40, qCells: 40 }, time: 50, prereqs: ['overdrive1'], effect: { globalMult: 2.0 } },
 
-/** Milestones */
-const MILESTONES = [
-    { id: 'first_prestige',  name: 'First Singularity',   desc: 'Perform your first prestige', icon: '🔮', check: () => Game.stats.totalPrestiges >= 1 },
-    { id: 'prestige_5',      name: 'Experienced',          desc: 'Prestige 5 times', icon: '⭐', check: () => Game.stats.totalPrestiges >= 5 },
-    { id: 'prestige_10',     name: 'Veteran',              desc: 'Prestige 10 times', icon: '🌟', check: () => Game.stats.totalPrestiges >= 10 },
-    { id: 'shards_10',       name: 'Shard Collector',      desc: 'Accumulate 10 total shards', icon: '💎', check: () => Game.stats.totalShardsEarned >= 10 },
-    { id: 'shards_50',       name: 'Shard Hoarder',        desc: 'Accumulate 50 total shards', icon: '💰', check: () => Game.stats.totalShardsEarned >= 50 },
-    { id: 'shards_100',      name: 'Shard Master',         desc: 'Accumulate 100 total shards', icon: '👑', check: () => Game.stats.totalShardsEarned >= 100 },
-];
+        // Transcendence Branch
+        singularityTheory:   { name: 'Singularity Theory',   branch: 'transcendence', desc: 'Unlock prestige', costs: { aiCores: 40, qCells: 40, nanofibers: 40 }, time: 60, prereqs: ['factoryBlueprints'], effect: { unlockPrestige: true } },
+        shardAmplification:  { name: 'Shard Amplification',  branch: 'transcendence', desc: '+50% shard gain', costs: { darkMatter: 15, antimatter: 15 }, time: 50, prereqs: ['singularityTheory', 'advFactoryBlueprints'], effect: { shardMult: 0.5 } },
+        temporalEcho:        { name: 'Temporal Echo',        branch: 'transcendence', desc: 'Keep 10% resources on prestige', costs: { darkMatter: 20, antimatter: 20 }, time: 55, prereqs: ['shardAmplification'], effect: { temporalEcho: true } },
+        dimensionalRift:     { name: 'Dimensional Rift',     branch: 'transcendence', desc: '+100% prod per prestige', costs: { darkMatter: 30, antimatter: 30 }, time: 60, prereqs: ['temporalEcho'], effect: { prestigeProdMult: 1.0 } },
+        omegaPoint:          { name: 'The Omega Point',      branch: 'transcendence', desc: 'x5 everything!', costs: { darkMatter: 50, antimatter: 50 }, time: 90, prereqs: ['dimensionalRift'], effect: { omegaMult: 5 } },
 
-/** Achievements - 55 achievements */
-const ACHIEVEMENTS = [
-    // Resource gathering
-    { id: 'gather_1',        name: 'First Click',          desc: 'Gather a resource manually', icon: '👆', reward: 'Click power +1', check: () => Game.stats.totalClicks >= 1 },
-    { id: 'gather_100',      name: 'Clicker',              desc: 'Click 100 times', icon: '👆', reward: 'Click power +2', check: () => Game.stats.totalClicks >= 100 },
-    { id: 'gather_1000',     name: 'Click Master',         desc: 'Click 1,000 times', icon: '🖱️', reward: 'Click power +5', check: () => Game.stats.totalClicks >= 1000 },
-    { id: 'gather_10000',    name: 'Click Legend',          desc: 'Click 10,000 times', icon: '⚡', reward: 'Click power +10', check: () => Game.stats.totalClicks >= 10000 },
-    // Energy milestones
-    { id: 'energy_100',      name: 'Powered Up',           desc: 'Accumulate 100 energy', icon: '⚡', reward: '+5% energy production', check: () => Game.stats.totalEnergyGathered >= 100 },
-    { id: 'energy_1000',     name: 'Energy Surplus',       desc: 'Accumulate 1,000 energy', icon: '⚡', reward: '+10% energy production', check: () => Game.stats.totalEnergyGathered >= 1000 },
-    { id: 'energy_10000',    name: 'Power Plant',          desc: 'Accumulate 10,000 energy', icon: '⚡', reward: '+15% energy production', check: () => Game.stats.totalEnergyGathered >= 10000 },
-    { id: 'energy_100000',   name: 'Energy Tycoon',        desc: 'Accumulate 100K energy', icon: '⚡', reward: '+20% energy production', check: () => Game.stats.totalEnergyGathered >= 100000 },
-    // Mineral milestones
-    { id: 'minerals_100',    name: 'Prospector',           desc: 'Accumulate 100 minerals', icon: '💎', reward: '+5% mineral production', check: () => Game.stats.totalMineralsGathered >= 100 },
-    { id: 'minerals_1000',   name: 'Mining Corp',          desc: 'Accumulate 1,000 minerals', icon: '💎', reward: '+10% mineral production', check: () => Game.stats.totalMineralsGathered >= 1000 },
-    { id: 'minerals_10000',  name: 'Mineral Baron',        desc: 'Accumulate 10,000 minerals', icon: '💎', reward: '+15% mineral production', check: () => Game.stats.totalMineralsGathered >= 10000 },
-    // Data milestones
-    { id: 'data_100',        name: 'Data Miner',           desc: 'Accumulate 100 data', icon: '📊', reward: '+5% data production', check: () => Game.stats.totalDataGathered >= 100 },
-    { id: 'data_1000',       name: 'Data Center',          desc: 'Accumulate 1,000 data', icon: '📊', reward: '+10% data production', check: () => Game.stats.totalDataGathered >= 1000 },
-    { id: 'data_10000',      name: 'Big Data',             desc: 'Accumulate 10,000 data', icon: '📊', reward: '+15% data production', check: () => Game.stats.totalDataGathered >= 10000 },
-    // Building milestones
-    { id: 'build_1',         name: 'Constructor',          desc: 'Build your first building', icon: '🏗️', reward: 'Unlocked!', check: () => Game.stats.totalBuildingsBuilt >= 1 },
-    { id: 'build_10',        name: 'Developer',            desc: 'Build 10 buildings', icon: '🏗️', reward: '+5% all production', check: () => Game.stats.totalBuildingsBuilt >= 10 },
-    { id: 'build_50',        name: 'Architect',            desc: 'Build 50 buildings', icon: '🏗️', reward: '+10% all production', check: () => Game.stats.totalBuildingsBuilt >= 50 },
-    { id: 'build_100',       name: 'Mega Builder',         desc: 'Build 100 buildings', icon: '🏗️', reward: '+15% all production', check: () => Game.stats.totalBuildingsBuilt >= 100 },
-    { id: 'build_500',       name: 'City Planner',         desc: 'Build 500 buildings', icon: '🏙️', reward: '+25% all production', check: () => Game.stats.totalBuildingsBuilt >= 500 },
-    // Research milestones
-    { id: 'research_1',      name: 'Researcher',           desc: 'Complete first research', icon: '🔬', reward: 'Unlocked!', check: () => Game.stats.totalResearchCompleted >= 1 },
-    { id: 'research_5',      name: 'Scientist',            desc: 'Complete 5 researches', icon: '🔬', reward: '+5% all production', check: () => Game.stats.totalResearchCompleted >= 5 },
-    { id: 'research_10',     name: 'Professor',            desc: 'Complete 10 researches', icon: '🔬', reward: '+10% all production', check: () => Game.stats.totalResearchCompleted >= 10 },
-    { id: 'research_20',     name: 'Genius',               desc: 'Complete 20 researches', icon: '🧠', reward: '+15% all production', check: () => Game.stats.totalResearchCompleted >= 20 },
-    { id: 'research_all',    name: 'Omniscient',           desc: 'Complete all research', icon: '🌟', reward: '+50% all production', check: () => Game.stats.totalResearchCompleted >= Object.keys(RESEARCH).length },
-    // T2 resources
-    { id: 'circuits_1',      name: 'First Circuit',        desc: 'Craft your first circuit', icon: '🔌', reward: 'Unlocked!', check: () => Game.stats.totalCircuitsCrafted >= 1 },
-    { id: 'alloys_1',        name: 'First Alloy',          desc: 'Craft your first alloy', icon: '🔩', reward: 'Unlocked!', check: () => Game.stats.totalAlloysCrafted >= 1 },
-    { id: 'code_1',          name: 'First Code',           desc: 'Compile your first code module', icon: '💻', reward: 'Unlocked!', check: () => Game.stats.totalCodeCrafted >= 1 },
-    // T3 resources
-    { id: 'aicore_1',        name: 'Artificial Mind',      desc: 'Create your first AI Core', icon: '🧠', reward: '+10% all production', check: () => Game.stats.totalAICoresCrafted >= 1 },
-    { id: 'qcell_1',         name: 'Quantum Leap',         desc: 'Create your first Quantum Cell', icon: '⚛️', reward: '+10% all production', check: () => Game.stats.totalQuantumCellsCrafted >= 1 },
-    { id: 'nano_1',          name: 'Nano Revolution',      desc: 'Create your first Nanofiber', icon: '🧬', reward: '+10% all production', check: () => Game.stats.totalNanofibersCrafted >= 1 },
-    // Prestige
-    { id: 'prestige_1',      name: 'Singularity',          desc: 'Perform your first prestige', icon: '🔮', reward: 'Permanent bonus!', check: () => Game.stats.totalPrestiges >= 1 },
-    { id: 'prestige_3',      name: 'Recurring',            desc: 'Prestige 3 times', icon: '🔮', reward: '+10% shard gain', check: () => Game.stats.totalPrestiges >= 3 },
-    { id: 'prestige_5a',     name: 'Cycle Master',         desc: 'Prestige 5 times', icon: '🔮', reward: '+20% shard gain', check: () => Game.stats.totalPrestiges >= 5 },
-    { id: 'prestige_10a',    name: 'Eternal',              desc: 'Prestige 10 times', icon: '✨', reward: '+50% shard gain', check: () => Game.stats.totalPrestiges >= 10 },
-    // Power
-    { id: 'power_50',        name: 'Powered Grid',         desc: 'Have 50+ MW power capacity', icon: '⚡', reward: '+5% all production', check: () => Game.getPowerMax() >= 50 },
-    { id: 'power_200',       name: 'Power Grid',           desc: 'Have 200+ MW power capacity', icon: '⚡', reward: '+10% all production', check: () => Game.getPowerMax() >= 200 },
-    { id: 'power_500',       name: 'Mega Grid',            desc: 'Have 500+ MW power capacity', icon: '⚡', reward: '+15% all production', check: () => Game.getPowerMax() >= 500 },
-    // Speed
-    { id: 'energy_rate_10',  name: 'Energy Flow',          desc: 'Produce 10+ energy/s', icon: '⚡', reward: '+5% energy rate', check: () => Game.getProductionRate('energy') >= 10 },
-    { id: 'energy_rate_100', name: 'Energy Torrent',       desc: 'Produce 100+ energy/s', icon: '⚡', reward: '+10% energy rate', check: () => Game.getProductionRate('energy') >= 100 },
-    { id: 'mineral_rate_10', name: 'Mineral Stream',       desc: 'Produce 10+ minerals/s', icon: '💎', reward: '+5% mineral rate', check: () => Game.getProductionRate('minerals') >= 10 },
-    { id: 'mineral_rate_100',name: 'Mineral Flood',        desc: 'Produce 100+ minerals/s', icon: '💎', reward: '+10% mineral rate', check: () => Game.getProductionRate('minerals') >= 100 },
-    // Time
-    { id: 'time_1h',         name: 'Dedicated',            desc: 'Play for 1 hour', icon: '⏰', reward: '+5% all production', check: () => Game.stats.totalTimePlayed >= 3600 },
-    { id: 'time_8h',         name: 'Committed',            desc: 'Play for 8 hours', icon: '⏰', reward: '+10% all production', check: () => Game.stats.totalTimePlayed >= 28800 },
-    { id: 'time_24h',        name: 'Obsessed',             desc: 'Play for 24 hours', icon: '⏰', reward: '+15% all production', check: () => Game.stats.totalTimePlayed >= 86400 },
-    // Events
-    { id: 'events_1',        name: 'Lucky',                desc: 'Experience your first event', icon: '🎲', reward: 'Unlocked!', check: () => Game.stats.totalEvents >= 1 },
-    { id: 'events_10',       name: 'Event Horizon',        desc: 'Experience 10 events', icon: '🎲', reward: '+5% all production', check: () => Game.stats.totalEvents >= 10 },
-    { id: 'events_50',       name: 'Chaos Theory',         desc: 'Experience 50 events', icon: '🎲', reward: '+10% all production', check: () => Game.stats.totalEvents >= 50 },
-    // Automation
-    { id: 'auto_1',          name: 'Automated',            desc: 'Enable your first auto-buyer', icon: '🤖', reward: 'Unlocked!', check: () => Game.stats.autoBuyersEnabled >= 1 },
-    { id: 'auto_5',          name: 'Hands Free',           desc: 'Enable 5 automation features', icon: '🤖', reward: '+5% all production', check: () => Game.stats.autoBuyersEnabled >= 5 },
-    // Storage
-    { id: 'storage_5000',    name: 'Warehouse',            desc: 'Have 5,000+ energy storage', icon: '📦', reward: '+10% storage', check: () => Game.getResourceCap('energy') >= 5000 },
-    { id: 'storage_50000',   name: 'Mega Warehouse',       desc: 'Have 50,000+ energy storage', icon: '📦', reward: '+20% storage', check: () => Game.getResourceCap('energy') >= 50000 },
-    // Special
-    { id: 'all_t2',          name: 'Processor Complete',   desc: 'Have all 3 T2 resources', icon: '⚙️', reward: '+10% T2 production', check: () => Game.resources.circuits > 0 && Game.resources.alloys > 0 && Game.resources.code > 0 },
-    { id: 'all_t3',          name: 'Factory Complete',     desc: 'Have all 3 T3 resources', icon: '🏭', reward: '+10% T3 production', check: () => Game.resources.aiCores > 0 && Game.resources.quantumCells > 0 && Game.resources.nanofibers > 0 },
-    { id: 'full_storage',    name: 'Overflowing',          desc: 'Fill any resource to cap', icon: '📦', reward: '+5% all production', check: () => { for (const r in RESOURCES) { if (RESOURCES[r].tier < 4 && Game.resources[r] >= Game.getResourceCap(r)) return true; } return false; } },
-    { id: 'rich',            name: 'Tycoon',               desc: 'Have 10K+ of every T1 resource', icon: '💰', reward: '+20% all production', check: () => Game.resources.energy >= 10000 && Game.resources.minerals >= 10000 && Game.resources.data >= 10000 },
-];
+        // Exotic Branch
+        darkMatterTheory:    { name: 'Dark Matter Theory',   branch: 'exotic', desc: 'Unlock DM crafting', costs: { aiCores: 25, qCells: 25 }, time: 30, prereqs: ['factoryBlueprints'], effect: { unlockDM: true } },
+        antimatterSynthesis: { name: 'Antimatter Synthesis',  branch: 'exotic', desc: 'Unlock AM crafting', costs: { qCells: 25, nanofibers: 25 }, time: 30, prereqs: ['darkMatterTheory'], effect: { unlockAM: true } },
+        exoticMastery:       { name: 'Exotic Mastery',       branch: 'exotic', desc: '+100% T4 production', costs: { darkMatter: 20, antimatter: 20 }, time: 45, prereqs: ['antimatterSynthesis'], effect: { t4ProdMult: 1.0 } },
+        realityWarping:      { name: 'Reality Warping',      branch: 'exotic', desc: '2x event frequency & power', costs: { darkMatter: 30, antimatter: 30 }, time: 55, prereqs: ['exoticMastery'], effect: { eventMult: 2 } },
+    };
 
-/** Random events */
-const EVENTS = [
-    { name: 'Solar Flare',      icon: '☀️', desc: 'Energy production doubled for 30s!', duration: 30, effect: 'energyBoost', mult: 2 },
-    { name: 'Data Storm',       icon: '🌩️', desc: 'Data production doubled for 30s!', duration: 30, effect: 'dataBoost', mult: 2 },
-    { name: 'Mineral Vein',     icon: '💎', desc: 'Mineral production doubled for 30s!', duration: 30, effect: 'mineralBoost', mult: 2 },
-    { name: 'Power Surge',      icon: '⚡', desc: 'All production +50% for 20s!', duration: 20, effect: 'allBoost', mult: 1.5 },
-    { name: 'Quantum Flux',     icon: '⚛️', desc: 'T3 production tripled for 15s!', duration: 15, effect: 't3Boost', mult: 3 },
-    { name: 'System Glitch',    icon: '🐛', desc: 'Free 50 of each T1 resource!', duration: 0, effect: 'freeT1', amount: 50 },
-    { name: 'Cache Found',      icon: '📦', desc: 'Free 10 of each T2 resource!', duration: 0, effect: 'freeT2', amount: 10 },
-    { name: 'Inspiration',      icon: '💡', desc: 'Click power x5 for 30s!', duration: 30, effect: 'clickBoost', mult: 5 },
-    { name: 'Efficiency Wave',  icon: '🌊', desc: 'Buildings use 50% less input for 25s!', duration: 25, effect: 'efficiencyBoost', mult: 0.5 },
-    { name: 'Cosmic Ray',       icon: '🌠', desc: 'All production x3 for 10s!', duration: 10, effect: 'allBoost', mult: 3 },
-];
+    const BRANCH_NAMES = {
+        efficiency: '🎯 Efficiency',
+        capacity: '📦 Capacity',
+        automation: '⚙️ Automation',
+        expansion: '🚀 Expansion',
+        transcendence: '🔮 Transcendence',
+        exotic: '🌀 Exotic',
+    };
 
-// ==========================================
-// GAME STATE
-// ==========================================
+    // Prestige upgrades
+    const PRESTIGE_UPGRADES = [
+        { id: 'shardMagnet',     name: '🧲 Shard Magnet',      desc: '+10% shard gain',                cost: 1 },
+        { id: 'quickStart',      name: '🚀 Quick Start',       desc: 'Start with 100 of each T1',     cost: 1 },
+        { id: 'efficientReboot', name: '⚡ Efficient Reboot',   desc: '+25% all production',            cost: 2 },
+        { id: 'persistentMemory',name: '💾 Persistent Memory',  desc: 'Keep extractors through prestige', cost: 2 },
+        { id: 'researchEcho',    name: '🔬 Research Echo',      desc: 'Keep Efficiency branch research', cost: 3 },
+        { id: 'autoStart',       name: '⚙️ Auto-Start',        desc: 'Start with automation unlocked', cost: 3 },
+        { id: 'shardDoubler',    name: '✨ Shard Doubler',      desc: '2x shard gain',                  cost: 5 },
+        { id: 'powerSurge',      name: '⚡ Power Surge',        desc: 'Start with 50 MW',              cost: 5 },
+        { id: 'clickMastery',    name: '👆 Click Mastery',      desc: '+500% click power',             cost: 4 },
+        { id: 'storageMastery',  name: '📦 Storage Mastery',    desc: '+200% all storage',             cost: 4 },
+        { id: 'temporalMastery', name: '⏰ Temporal Mastery',   desc: '+50% game speed',               cost: 7 },
+        { id: 'theSingularity',  name: '🌌 The Singularity',    desc: 'x5 all production',             cost: 10 },
+    ];
 
-const Game = {
-    resources: {},
-    buildings: {},
-    research: {},
-    prestigeUpgrades: {},
-    milestones: {},
-    achievements: {},
-    automation: { buyers: {}, crafters: {}, sellers: {} },
-    
-    // Bonuses from research
-    researchBonuses: {},
-    automationUnlocks: {},
-    prestigeUnlocked: false,
-    
-    // Active events
-    activeEvents: [],
-    eventTimer: 0,
-    
-    // Stats
-    stats: {
-        totalTimePlayed: 0,
-        currentRunTime: 0,
-        totalClicks: 0,
-        totalBuildingsBuilt: 0,
-        totalResearchCompleted: 0,
-        totalPrestiges: 0,
-        totalEnergyGathered: 0,
-        totalMineralsGathered: 0,
-        totalDataGathered: 0,
-        totalShardsEarned: 0,
-        totalCircuitsCrafted: 0,
-        totalAlloysCrafted: 0,
-        totalCodeCrafted: 0,
-        totalAICoresCrafted: 0,
-        totalQuantumCellsCrafted: 0,
-        totalNanofibersCrafted: 0,
-        totalEvents: 0,
-        autoBuyersEnabled: 0,
-    },
-    
-    lastSave: 0,
-    lastTick: Date.now(),
-    tickRate: 50, // ms per tick (20 ticks/sec)
-    saveInterval: 30000, // 30 seconds
-    
-    // ==========================================
-    // INITIALIZATION
-    // ==========================================
-    
-    init() {
-        this.resetState();
-        this.loadGame();
-        this.setupUI();
-        this.startGameLoop();
-        this.startAutoSave();
-        console.log('Automata initialized!');
-    },
-    
-    resetState() {
-        // Initialize resources
-        for (const key in RESOURCES) {
-            this.resources[key] = 0;
-        }
-        // Initialize buildings
-        for (const key in BUILDINGS) {
-            this.buildings[key] = { count: 0, unlocked: BUILDINGS[key].unlocked };
-        }
-        // Initialize research
-        for (const key in RESEARCH) {
-            this.research[key] = false;
-        }
-        // Initialize prestige upgrades
-        for (const key in PRESTIGE_UPGRADES) {
-            this.prestigeUpgrades[key] = 0;
-        }
-        // Initialize milestones
-        for (const m of MILESTONES) {
-            this.milestones[m.id] = false;
-        }
-        // Initialize achievements
-        for (const a of ACHIEVEMENTS) {
-            this.achievements[a.id] = false;
-        }
-        // Initialize automation
-        this.automation = { buyers: {}, crafters: {}, sellers: {} };
-        for (const key in BUILDINGS) {
-            this.automation.buyers[key] = false;
-        }
-        for (const key in RECIPES) {
-            this.automation.crafters[key] = false;
-        }
-        for (const key in RESOURCES) {
-            if (RESOURCES[key].tier < 4) this.automation.sellers[key] = false;
-        }
-        
-        this.researchBonuses = {
-            energyDrillMult: 1, mineralMinerMult: 1, dataScannerMult: 1,
-            processorEfficiency: 1, globalProductionMult: 1,
-            extractorMult: 1, processorMult: 1, factoryMult: 1,
-            t1StorageBonus: 0, t2StorageBonus: 0, t3StorageBonus: 0,
-            storageBuildingMult: 1, storageGlobalMult: 1,
-            shardMult: 1, prestigeStartBonus: 0, prestigeProductionMult: false,
-            transcendenceMult: 1, clickMult: 1,
+    // Achievement definitions
+    const ACHIEVEMENTS = [
+        // Clicking
+        { id: 'click10',       name: 'First Steps',       icon: '👆', desc: 'Click 10 times',           check: s => s.stats.totalClicks >= 10, bonus: 1 },
+        { id: 'click100',      name: 'Clicker',           icon: '👆', desc: 'Click 100 times',          check: s => s.stats.totalClicks >= 100, bonus: 1 },
+        { id: 'click1000',     name: 'Click Master',      icon: '👆', desc: 'Click 1,000 times',        check: s => s.stats.totalClicks >= 1000, bonus: 2 },
+        { id: 'click10000',    name: 'Click Legend',       icon: '👆', desc: 'Click 10,000 times',       check: s => s.stats.totalClicks >= 10000, bonus: 3 },
+        // Resources
+        { id: 'energy100',     name: 'Powered Up',        icon: '⚡', desc: 'Have 100 Energy',          check: s => s.resources.energy >= 100, bonus: 1 },
+        { id: 'energy1000',    name: 'Energized',         icon: '⚡', desc: 'Have 1,000 Energy',         check: s => s.resources.energy >= 1000, bonus: 2 },
+        { id: 'minerals100',   name: 'Miner',             icon: '⛏️', desc: 'Have 100 Minerals',        check: s => s.resources.minerals >= 100, bonus: 1 },
+        { id: 'minerals1000',  name: 'Deep Miner',        icon: '⛏️', desc: 'Have 1,000 Minerals',      check: s => s.resources.minerals >= 1000, bonus: 2 },
+        { id: 'data100',       name: 'Data Collector',    icon: '📊', desc: 'Have 100 Data',            check: s => s.resources.data >= 100, bonus: 1 },
+        { id: 'data1000',      name: 'Big Data',          icon: '📊', desc: 'Have 1,000 Data',          check: s => s.resources.data >= 1000, bonus: 2 },
+        { id: 'circuits50',    name: 'Circuit Board',     icon: '🔌', desc: 'Have 50 Circuits',         check: s => s.resources.circuits >= 50, bonus: 2 },
+        { id: 'alloys50',      name: 'Alloy Smith',       icon: '🔩', desc: 'Have 50 Alloys',           check: s => s.resources.alloys >= 50, bonus: 2 },
+        { id: 'code50',        name: 'Programmer',        icon: '💻', desc: 'Have 50 Code',             check: s => s.resources.code >= 50, bonus: 2 },
+        { id: 'aiCore10',      name: 'AI Pioneer',        icon: '🧠', desc: 'Have 10 AI Cores',         check: s => s.resources.aiCores >= 10, bonus: 3 },
+        { id: 'qCell10',       name: 'Quantum Leap',      icon: '⚛️', desc: 'Have 10 Quantum Cells',    check: s => s.resources.qCells >= 10, bonus: 3 },
+        { id: 'nano10',        name: 'Nano Engineer',     icon: '🧬', desc: 'Have 10 Nanofibers',       check: s => s.resources.nanofibers >= 10, bonus: 3 },
+        { id: 'dm5',           name: 'Dark Explorer',     icon: '🌀', desc: 'Have 5 Dark Matter',       check: s => s.resources.darkMatter >= 5, bonus: 4 },
+        { id: 'am5',           name: 'Anti World',        icon: '✨', desc: 'Have 5 Antimatter',        check: s => s.resources.antimatter >= 5, bonus: 4 },
+        // Buildings
+        { id: 'build5',        name: 'Builder',           icon: '🏗️', desc: 'Own 5 buildings',          check: s => totalBuildings(s) >= 5, bonus: 1 },
+        { id: 'build25',       name: 'Architect',         icon: '🏗️', desc: 'Own 25 buildings',         check: s => totalBuildings(s) >= 25, bonus: 2 },
+        { id: 'build100',      name: 'Mega Builder',      icon: '🏗️', desc: 'Own 100 buildings',        check: s => totalBuildings(s) >= 100, bonus: 3 },
+        { id: 'build250',      name: 'City Planner',      icon: '🏗️', desc: 'Own 250 buildings',        check: s => totalBuildings(s) >= 250, bonus: 5 },
+        // Research
+        { id: 'research5',     name: 'Researcher',        icon: '🔬', desc: 'Complete 5 research',      check: s => s.stats.researchCompleted >= 5, bonus: 2 },
+        { id: 'research15',    name: 'Scientist',         icon: '🔬', desc: 'Complete 15 research',     check: s => s.stats.researchCompleted >= 15, bonus: 3 },
+        { id: 'research30',    name: 'Genius',            icon: '🔬', desc: 'Complete 30 research',     check: s => s.stats.researchCompleted >= 30, bonus: 5 },
+        // Crafting
+        { id: 'craft10',       name: 'Crafter',           icon: '🔧', desc: 'Craft 10 items',           check: s => s.stats.totalCrafts >= 10, bonus: 1 },
+        { id: 'craft100',      name: 'Master Crafter',    icon: '🔧', desc: 'Craft 100 items',          check: s => s.stats.totalCrafts >= 100, bonus: 2 },
+        { id: 'craft500',      name: 'Artisan',           icon: '🔧', desc: 'Craft 500 items',          check: s => s.stats.totalCrafts >= 500, bonus: 3 },
+        // Prestige
+        { id: 'prestige1',     name: 'Reborn',            icon: '🔮', desc: 'Prestige once',            check: s => s.stats.prestigeCount >= 1, bonus: 3 },
+        { id: 'prestige5',     name: 'Cycle Master',      icon: '🔮', desc: 'Prestige 5 times',         check: s => s.stats.prestigeCount >= 5, bonus: 5 },
+        { id: 'prestige10',    name: 'Eternal',           icon: '🔮', desc: 'Prestige 10 times',        check: s => s.stats.prestigeCount >= 10, bonus: 5 },
+        { id: 'shard10',       name: 'Shard Collector',   icon: '🔮', desc: 'Have 10 shards',           check: s => s.resources.shards >= 10, bonus: 3 },
+        { id: 'shard50',       name: 'Shard Hoarder',     icon: '🔮', desc: 'Have 50 shards',           check: s => s.resources.shards >= 50, bonus: 5 },
+        // Power
+        { id: 'power25',       name: 'Powered',           icon: '⚡', desc: 'Have 25 MW capacity',      check: s => getPowerCap(s) >= 25, bonus: 1 },
+        { id: 'power100',      name: 'Power Plant',       icon: '⚡', desc: 'Have 100 MW capacity',     check: s => getPowerCap(s) >= 100, bonus: 2 },
+        { id: 'power500',      name: 'Grid Master',       icon: '⚡', desc: 'Have 500 MW capacity',     check: s => getPowerCap(s) >= 500, bonus: 3 },
+        // Production rates
+        { id: 'rate10',        name: 'Flowing',           icon: '📈', desc: '10+ Energy/s',             check: s => getRate(s, 'energy') >= 10, bonus: 2 },
+        { id: 'rate50',        name: 'Streaming',         icon: '📈', desc: '50+ Energy/s',             check: s => getRate(s, 'energy') >= 50, bonus: 3 },
+        { id: 'rate100',       name: 'Flooding',          icon: '📈', desc: '100+ Energy/s',            check: s => getRate(s, 'energy') >= 100, bonus: 4 },
+        // Time
+        { id: 'time5m',        name: 'Getting Started',   icon: '⏰', desc: 'Play for 5 minutes',       check: s => s.stats.timePlayed >= 300, bonus: 1 },
+        { id: 'time30m',       name: 'Dedicated',         icon: '⏰', desc: 'Play for 30 minutes',      check: s => s.stats.timePlayed >= 1800, bonus: 2 },
+        { id: 'time2h',        name: 'Committed',         icon: '⏰', desc: 'Play for 2 hours',         check: s => s.stats.timePlayed >= 7200, bonus: 3 },
+        // Events
+        { id: 'event1',        name: 'Lucky',             icon: '🎲', desc: 'Witness an event',         check: s => s.stats.eventsTriggered >= 1, bonus: 1 },
+        { id: 'event10',       name: 'Event Horizon',     icon: '🎲', desc: 'Witness 10 events',        check: s => s.stats.eventsTriggered >= 10, bonus: 2 },
+        { id: 'event50',       name: 'Chaos Theory',      icon: '🎲', desc: 'Witness 50 events',        check: s => s.stats.eventsTriggered >= 50, bonus: 3 },
+        // Automation
+        { id: 'autoOn',        name: 'Hands Free',        icon: '🤖', desc: 'Enable any automation',    check: s => Object.values(s.automation).some(v => v), bonus: 2 },
+        { id: 'allAutoOn',     name: 'Full Auto',         icon: '🤖', desc: 'Enable all automation',    check: s => countAutoEnabled(s) >= 6, bonus: 5 },
+        // Special
+        { id: 'allT1_500',     name: 'Stockpile',         icon: '📦', desc: '500+ of each T1',          check: s => s.resources.energy >= 500 && s.resources.minerals >= 500 && s.resources.data >= 500, bonus: 3 },
+        { id: 'allT2_100',     name: 'Processed',         icon: '📦', desc: '100+ of each T2',          check: s => s.resources.circuits >= 100 && s.resources.alloys >= 100 && s.resources.code >= 100, bonus: 4 },
+        { id: 'allT3_25',      name: 'Advanced',          icon: '📦', desc: '25+ of each T3',           check: s => s.resources.aiCores >= 25 && s.resources.qCells >= 25 && s.resources.nanofibers >= 25, bonus: 5 },
+        { id: 'omega',         name: 'Omega',             icon: '🌌', desc: 'Research The Omega Point', check: s => s.research.omegaPoint === true, bonus: 5 },
+    ];
+
+    // Random events
+    const EVENTS = [
+        { name: '⚡ Power Surge',       desc: '+200% Energy production for 30s',   duration: 30, effect: { prodBonus: { energy: 2 } } },
+        { name: '⛏️ Rich Vein',         desc: '+200% Mineral production for 30s',  duration: 30, effect: { prodBonus: { minerals: 2 } } },
+        { name: '📊 Data Burst',        desc: '+200% Data production for 30s',     duration: 30, effect: { prodBonus: { data: 2 } } },
+        { name: '🔌 Circuit Overload',  desc: '+300% Circuit production for 20s',  duration: 20, effect: { prodBonus: { circuits: 3 } } },
+        { name: '🎁 Resource Cache',    desc: 'Gain 50 of each T1 resource',       duration: 0,  effect: { instant: { energy: 50, minerals: 50, data: 50 } } },
+        { name: '🚀 Productivity Boost',desc: '+100% all production for 45s',      duration: 45, effect: { globalBonus: 1 } },
+        { name: '🔬 Research Rush',     desc: 'Research 3x faster for 30s',        duration: 30, effect: { researchSpeed: 3 } },
+        { name: '💎 Rare Find',         desc: 'Gain 10 of each T2 resource',       duration: 0,  effect: { instant: { circuits: 10, alloys: 10, code: 10 } } },
+        { name: '⚛️ Quantum Fluctuation', desc: 'Gain 5 of each T3 resource',     duration: 0,  effect: { instant: { aiCores: 5, qCells: 5, nanofibers: 5 } } },
+        { name: '🌀 Dark Pulse',        desc: '+500% T4 production for 20s',       duration: 20, effect: { prodBonus: { darkMatter: 5, antimatter: 5 } } },
+        { name: '👆 Click Frenzy',      desc: '+500% click power for 15s',         duration: 15, effect: { clickBonus: 5 } },
+        { name: '📦 Storage Expansion', desc: '+50% all caps for 60s',             duration: 60, effect: { capBonus: 0.5 } },
+    ];
+
+    // ===== HELPER FUNCTIONS =====
+
+    function fmt(n) {
+        if (n === Infinity) return '∞';
+        if (n < 0) return '-' + fmt(-n);
+        if (n < 1000) return n % 1 === 0 ? String(n) : n.toFixed(1);
+        const suffixes = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi'];
+        let tier = Math.floor(Math.log10(Math.abs(n)) / 3);
+        if (tier >= suffixes.length) tier = suffixes.length - 1;
+        const scaled = n / Math.pow(10, tier * 3);
+        return scaled.toFixed(1) + suffixes[tier];
+    }
+
+    function fmtTime(seconds) {
+        if (seconds < 60) return Math.ceil(seconds) + 's';
+        if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + Math.ceil(seconds % 60) + 's';
+        return Math.floor(seconds / 3600) + 'h ' + Math.floor((seconds % 3600) / 60) + 'm';
+    }
+
+    function totalBuildings(s) {
+        let t = 0;
+        for (const k in s.buildings) t += s.buildings[k];
+        return t;
+    }
+
+    function countAutoEnabled(s) {
+        let c = 0;
+        for (const k in s.automation) if (s.automation[k]) c++;
+        return c;
+    }
+
+    // ===== GAME STATE =====
+
+    function createDefaultState() {
+        const resources = {};
+        for (const id of RESOURCE_IDS) resources[id] = 0;
+
+        const buildings = {};
+        for (const id in BUILDINGS) buildings[id] = 0;
+
+        const research = {};
+        for (const id in RESEARCH) research[id] = false;
+
+        return {
+            resources,
+            buildings,
+            research,
+            researchQueue: null, // { id, progress, total }
+            automation: {
+                extractors: false,
+                processors: false,
+                factories: false,
+                craftT2: false,
+                craftT3: false,
+                craftT4: false,
+            },
+            prestigeUpgrades: {},
+            achievements: {},
+            activeEvents: [], // { name, desc, effect, endTime }
+            stats: {
+                totalClicks: 0,
+                totalCrafts: 0,
+                researchCompleted: 0,
+                prestigeCount: 0,
+                totalGathered: {},
+                buildingsBuilt: 0,
+                eventsTriggered: 0,
+                timePlayed: 0,
+                achievementsUnlocked: 0,
+            },
+            lastSave: Date.now(),
+            lastTick: Date.now(),
+            gameSpeed: 1,
         };
-        this.automationUnlocks = {
-            autoBuyExtractors: false, autoBuyProcessors: false, autoBuyFactories: false,
-            autoBuyAll: false, autoCraftT2: false, autoCraftT3: false, autoSell: false,
-        };
-        this.prestigeUnlocked = false;
-        this.activeEvents = [];
-        this.eventTimer = 0;
-    },
-    
-    // ==========================================
-    // RESOURCE MANAGEMENT
-    // ==========================================
-    
-    getResourceCap(resource) {
-        const def = RESOURCES[resource];
-        if (!def || def.tier === 4) return Infinity;
-        
+    }
+
+    let game = createDefaultState();
+
+    // ===== COMPUTED VALUES =====
+
+    function getResourceCap(resId) {
+        const def = RESOURCES[resId];
+        if (!def || def.baseCap === Infinity) return Infinity;
+
         let cap = def.baseCap;
-        
-        // Prestige upgrade: base storage x2
-        if (this.prestigeUpgrades.storageBoost > 0) cap *= 2;
-        
-        // Research storage bonuses
-        if (def.tier === 1) cap += this.researchBonuses.t1StorageBonus;
-        if (def.tier === 2) cap += this.researchBonuses.t2StorageBonus;
-        if (def.tier === 3) cap += this.researchBonuses.t3StorageBonus;
-        
+
         // Building storage bonuses
-        for (const bKey in BUILDINGS) {
-            const bDef = BUILDINGS[bKey];
-            if (bDef.storageBonus && bDef.storageBonus[resource]) {
-                cap += bDef.storageBonus[resource] * this.buildings[bKey].count * this.researchBonuses.storageBuildingMult;
+        for (const bId in BUILDINGS) {
+            const b = BUILDINGS[bId];
+            if (b.capBonus && b.capBonus[resId]) {
+                cap += b.capBonus[resId] * game.buildings[bId];
             }
         }
-        
-        // Global storage multiplier from research
-        cap *= this.researchBonuses.storageGlobalMult;
-        
-        // Achievement bonuses
-        if (this.achievements.storage_5000) cap *= 1.1;
-        if (this.achievements.storage_50000) cap *= 1.2;
-        
-        return Math.floor(cap);
-    },
-    
-    addResource(resource, amount) {
-        const cap = this.getResourceCap(resource);
-        this.resources[resource] = Math.min(this.resources[resource] + amount, cap);
-        if (this.resources[resource] < 0) this.resources[resource] = 0;
-    },
-    
-    canAfford(costs) {
-        for (const r in costs) {
-            if ((this.resources[r] || 0) < costs[r]) return false;
+
+        // Research cap multipliers
+        const tier = def.tier;
+        let mult = 1;
+        for (const rId in RESEARCH) {
+            if (!game.research[rId]) continue;
+            const eff = RESEARCH[rId].effect;
+            if (tier === 1 && eff.t1CapMult) mult += eff.t1CapMult;
+            if (tier === 2 && eff.t2CapMult) mult += eff.t2CapMult;
+            if (tier === 3 && eff.t3CapMult) mult += eff.t3CapMult;
+            if (tier === 4 && eff.t4CapMult) mult += eff.t4CapMult;
         }
-        return true;
-    },
-    
-    spendResources(costs) {
-        for (const r in costs) {
-            this.resources[r] -= costs[r];
+
+        // Prestige storage mastery
+        if (game.prestigeUpgrades.storageMastery) mult += 2;
+
+        // Event cap bonus
+        for (const ev of game.activeEvents) {
+            if (ev.effect.capBonus) mult += ev.effect.capBonus;
         }
-    },
-    
-    // ==========================================
-    // PRODUCTION CALCULATIONS
-    // ==========================================
-    
-    getProductionRate(resource) {
+
+        return Math.floor(cap * mult);
+    }
+
+    function getPowerCap(s) {
+        let cap = 0;
+        for (const bId in BUILDINGS) {
+            const b = BUILDINGS[bId];
+            if (b.powerGen) cap += b.powerGen * (s || game).buildings[bId];
+        }
+
+        // Research power grid multipliers
+        let mult = 1;
+        for (const rId in RESEARCH) {
+            if (!(s || game).research[rId]) continue;
+            if (RESEARCH[rId].effect.powerCapMult) mult += RESEARCH[rId].effect.powerCapMult;
+        }
+
+        // Prestige power surge
+        if ((s || game).prestigeUpgrades.powerSurge) cap += 50;
+
+        return Math.floor(cap * mult);
+    }
+
+    function getPowerUsage() {
+        let usage = 0;
+        for (const bId in BUILDINGS) {
+            const b = BUILDINGS[bId];
+            if (b.powerUse) usage += b.powerUse * game.buildings[bId];
+        }
+        return usage;
+    }
+
+    function getPowerEfficiency() {
+        const cap = getPowerCap();
+        const usage = getPowerUsage();
+        if (usage === 0) return 1;
+        if (cap >= usage) return 1;
+        return 0.1; // 10% when over capacity
+    }
+
+    function getProductionMultiplier(buildingId) {
+        const b = BUILDINGS[buildingId];
+        let mult = 1;
+        const eff = getPowerEfficiency();
+        mult *= eff;
+
+        // Research multipliers
+        for (const rId in RESEARCH) {
+            if (!game.research[rId]) continue;
+            const re = RESEARCH[rId].effect;
+            if (b.cat === 'extractors' && re.extractorMult) mult += re.extractorMult;
+            if (b.cat === 'processors' && re.processorMult) mult += re.processorMult;
+            if ((b.cat === 'factories' || b.cat === 'advFactories') && re.factoryMult) mult += re.factoryMult;
+            if (b.cat === 'advFactories' && re.t4ProdMult) mult += re.t4ProdMult;
+            if (re.globalMult) mult += re.globalMult;
+            if (re.omegaMult) mult *= re.omegaMult;
+        }
+
+        // Prestige multipliers
+        if (game.prestigeUpgrades.efficientReboot) mult += 0.25;
+        if (game.prestigeUpgrades.theSingularity) mult *= 5;
+
+        // Prestige count bonus (dimensional rift)
+        for (const rId in RESEARCH) {
+            if (!game.research[rId]) continue;
+            if (RESEARCH[rId].effect.prestigeProdMult) {
+                mult += RESEARCH[rId].effect.prestigeProdMult * game.stats.prestigeCount;
+            }
+        }
+
+        // Achievement bonus
+        let achBonus = 0;
+        for (const ach of ACHIEVEMENTS) {
+            if (game.achievements[ach.id]) achBonus += ach.bonus;
+        }
+        mult *= (1 + achBonus / 100);
+
+        // Game speed (temporal mastery)
+        if (game.prestigeUpgrades.temporalMastery) mult *= 1.5;
+
+        // Event bonuses
+        for (const ev of game.activeEvents) {
+            if (ev.effect.globalBonus) mult += ev.effect.globalBonus;
+            if (ev.effect.prodBonus) {
+                for (const resId in b.produces) {
+                    if (ev.effect.prodBonus[resId]) mult += ev.effect.prodBonus[resId];
+                }
+            }
+        }
+
+        return mult;
+    }
+
+    function getClickPower() {
+        let power = 1;
+        // Research
+        for (const rId in RESEARCH) {
+            if (!game.research[rId]) continue;
+            if (RESEARCH[rId].effect.clickMult) power += RESEARCH[rId].effect.clickMult;
+        }
+        // Prestige
+        if (game.prestigeUpgrades.clickMastery) power += 5;
+        // Events
+        for (const ev of game.activeEvents) {
+            if (ev.effect.clickBonus) power += ev.effect.clickBonus;
+        }
+        // Achievement bonus
+        let achBonus = 0;
+        for (const ach of ACHIEVEMENTS) {
+            if (game.achievements[ach.id]) achBonus += ach.bonus;
+        }
+        power *= (1 + achBonus / 100);
+        return Math.floor(power);
+    }
+
+    function getRate(s, resId) {
+        // Calculate net rate for a resource
         let rate = 0;
-        const powerOk = this.getPowerUsed() <= this.getPowerMax();
-        
-        for (const bKey in BUILDINGS) {
-            const bDef = BUILDINGS[bKey];
-            const count = this.buildings[bKey].count;
-            if (count <= 0) continue;
-            
-            // Production
-            if (bDef.produces[resource]) {
-                let prod = bDef.produces[resource] * count;
-                
-                // Apply category multipliers
-                if (bDef.category === 'extractors') {
-                    prod *= this.researchBonuses.extractorMult;
-                    // Specific extractor bonuses
-                    if (bKey === 'energyDrill') prod *= this.researchBonuses.energyDrillMult;
-                    if (bKey === 'mineralMiner') prod *= this.researchBonuses.mineralMinerMult;
-                    if (bKey === 'dataScanner') prod *= this.researchBonuses.dataScannerMult;
-                }
-                if (bDef.category === 'processors') prod *= this.researchBonuses.processorMult;
-                if (bDef.category === 'factories') prod *= this.researchBonuses.factoryMult;
-                
-                // Global production multiplier
-                prod *= this.researchBonuses.globalProductionMult;
-                prod *= this.researchBonuses.transcendenceMult;
-                
-                // Prestige production multiplier
-                if (this.researchBonuses.prestigeProductionMult && this.stats.totalPrestiges > 0) {
-                    prod *= (1 + this.stats.totalPrestiges * 0.5);
-                }
-                
-                // Shard resonance
-                if (this.prestigeUpgrades.shardBoost1 > 0) {
-                    const shardBonus = Math.min(this.resources.shards * 0.1, 1.0);
-                    prod *= (1 + shardBonus);
-                }
-                if (this.prestigeUpgrades.shardBoost2 > 0) {
-                    const shardBonus = Math.min(this.resources.shards * 0.25, 2.5);
-                    prod *= (1 + shardBonus);
-                }
-                
-                // Achievement bonuses
-                prod *= this.getAchievementProductionMult(resource);
-                
-                // Event bonuses
-                prod *= this.getEventMult(resource, bDef.category);
-                
-                // Power check - non-power buildings need power
-                if (bDef.powerUse > 0 && !powerOk) prod *= 0.1;
-                
-                rate += prod;
-            }
-            
-            // Consumption
-            if (bDef.consumes[resource]) {
-                let cons = bDef.consumes[resource] * count;
-                cons *= this.researchBonuses.processorEfficiency;
-                
-                // Event efficiency boost
-                for (const evt of this.activeEvents) {
-                    if (evt.effect === 'efficiencyBoost') cons *= evt.mult;
-                }
-                
-                if (bDef.powerUse > 0 && !powerOk) cons *= 0.1;
-                
-                rate -= cons;
-            }
+        for (const bId in BUILDINGS) {
+            const b = BUILDINGS[bId];
+            const count = (s || game).buildings[bId];
+            if (count === 0) continue;
+            const mult = getProductionMultiplier(bId);
+            if (b.produces[resId]) rate += b.produces[resId] * count * mult;
+            if (b.consumes[resId]) rate -= b.consumes[resId] * count * mult;
         }
-        
         return rate;
-    },
-    
-    getAchievementProductionMult(resource) {
-        let mult = 1;
-        // General production achievements
-        if (this.achievements.build_10) mult *= 1.05;
-        if (this.achievements.build_50) mult *= 1.10;
-        if (this.achievements.build_100) mult *= 1.15;
-        if (this.achievements.build_500) mult *= 1.25;
-        if (this.achievements.research_5) mult *= 1.05;
-        if (this.achievements.research_10) mult *= 1.10;
-        if (this.achievements.research_20) mult *= 1.15;
-        if (this.achievements.research_all) mult *= 1.50;
-        if (this.achievements.time_1h) mult *= 1.05;
-        if (this.achievements.time_8h) mult *= 1.10;
-        if (this.achievements.time_24h) mult *= 1.15;
-        if (this.achievements.events_10) mult *= 1.05;
-        if (this.achievements.events_50) mult *= 1.10;
-        if (this.achievements.power_50) mult *= 1.05;
-        if (this.achievements.power_200) mult *= 1.10;
-        if (this.achievements.power_500) mult *= 1.15;
-        if (this.achievements.auto_5) mult *= 1.05;
-        if (this.achievements.full_storage) mult *= 1.05;
-        if (this.achievements.rich) mult *= 1.20;
-        if (this.achievements.aicore_1) mult *= 1.10;
-        if (this.achievements.qcell_1) mult *= 1.10;
-        if (this.achievements.nano_1) mult *= 1.10;
-        
-        // Resource-specific
-        if (resource === 'energy') {
-            if (this.achievements.energy_100) mult *= 1.05;
-            if (this.achievements.energy_1000) mult *= 1.10;
-            if (this.achievements.energy_10000) mult *= 1.15;
-            if (this.achievements.energy_100000) mult *= 1.20;
-            if (this.achievements.energy_rate_10) mult *= 1.05;
-            if (this.achievements.energy_rate_100) mult *= 1.10;
-        }
-        if (resource === 'minerals') {
-            if (this.achievements.minerals_100) mult *= 1.05;
-            if (this.achievements.minerals_1000) mult *= 1.10;
-            if (this.achievements.minerals_10000) mult *= 1.15;
-            if (this.achievements.mineral_rate_10) mult *= 1.05;
-            if (this.achievements.mineral_rate_100) mult *= 1.10;
-        }
-        if (resource === 'data') {
-            if (this.achievements.data_100) mult *= 1.05;
-            if (this.achievements.data_1000) mult *= 1.10;
-            if (this.achievements.data_10000) mult *= 1.15;
-        }
-        
-        // T2/T3 specific
-        if (['circuits', 'alloys', 'code'].includes(resource) && this.achievements.all_t2) mult *= 1.10;
-        if (['aiCores', 'quantumCells', 'nanofibers'].includes(resource) && this.achievements.all_t3) mult *= 1.10;
-        
-        return mult;
-    },
-    
-    getEventMult(resource, category) {
-        let mult = 1;
-        for (const evt of this.activeEvents) {
-            if (evt.effect === 'energyBoost' && resource === 'energy') mult *= evt.mult;
-            if (evt.effect === 'mineralBoost' && resource === 'minerals') mult *= evt.mult;
-            if (evt.effect === 'dataBoost' && resource === 'data') mult *= evt.mult;
-            if (evt.effect === 'allBoost') mult *= evt.mult;
-            if (evt.effect === 't3Boost' && ['aiCores', 'quantumCells', 'nanofibers'].includes(resource)) mult *= evt.mult;
-        }
-        return mult;
-    },
-    
-    // ==========================================
-    // POWER SYSTEM
-    // ==========================================
-    
-    getPowerUsed() {
-        let used = 0;
-        for (const bKey in BUILDINGS) {
-            const pw = BUILDINGS[bKey].powerUse;
-            if (pw > 0) used += pw * this.buildings[bKey].count;
-        }
-        return used;
-    },
-    
-    getPowerMax() {
-        let max = 10; // Base power
-        if (this.prestigeUpgrades.powerBoost > 0) max += 50;
-        for (const bKey in BUILDINGS) {
-            const pw = BUILDINGS[bKey].powerUse;
-            if (pw < 0) max += Math.abs(pw) * this.buildings[bKey].count;
-        }
-        return max;
-    },
-    
-    // ==========================================
-    // BUILDING SYSTEM
-    // ==========================================
-    
-    getBuildingCost(buildingKey) {
-        const def = BUILDINGS[buildingKey];
-        const count = this.buildings[buildingKey].count;
+    }
+
+    function getBuildingCost(buildingId) {
+        const b = BUILDINGS[buildingId];
+        const count = game.buildings[buildingId];
         const costs = {};
-        for (const r in def.baseCost) {
-            costs[r] = Math.ceil(def.baseCost[r] * Math.pow(def.costScale, count));
+        for (const resId in b.costs) {
+            costs[resId] = Math.ceil(b.costs[resId] * Math.pow(COST_SCALE, count));
         }
         return costs;
-    },
-    
-    buyBuilding(buildingKey) {
-        const costs = this.getBuildingCost(buildingKey);
-        if (!this.canAfford(costs)) return false;
-        if (!this.buildings[buildingKey].unlocked) return false;
-        
-        this.spendResources(costs);
-        this.buildings[buildingKey].count++;
-        this.stats.totalBuildingsBuilt++;
-        
+    }
+
+    function canAfford(costs) {
+        for (const resId in costs) {
+            if (game.resources[resId] < costs[resId]) return false;
+        }
         return true;
-    },
-    
-    unlockBuildings(keys) {
-        for (const key of keys) {
-            if (this.buildings[key]) {
-                this.buildings[key].unlocked = true;
+    }
+
+    function spendResources(costs) {
+        for (const resId in costs) {
+            game.resources[resId] -= costs[resId];
+        }
+    }
+
+    function addResource(resId, amount) {
+        const cap = getResourceCap(resId);
+        game.resources[resId] = Math.min(game.resources[resId] + amount, cap);
+    }
+
+    function isBuildingUnlocked(buildingId) {
+        const b = BUILDINGS[buildingId];
+        if (!b.unlock) return true;
+        return game.research[b.unlock] === true;
+    }
+
+    function isResearchUnlocked(researchId) {
+        const r = RESEARCH[researchId];
+        for (const prereq of r.prereqs) {
+            if (!game.research[prereq]) return false;
+        }
+        return true;
+    }
+
+    function isRecipeUnlocked(recipe) {
+        const tier = RESOURCES[recipe.output].tier;
+        if (tier <= 2) return true;
+        if (tier === 3) return game.research.factoryBlueprints === true;
+        if (tier === 4) {
+            if (recipe.output === 'darkMatter') return game.research.darkMatterTheory === true;
+            if (recipe.output === 'antimatter') return game.research.antimatterSynthesis === true;
+        }
+        return true;
+    }
+
+    function getPrestigeShards() {
+        let totalAdvanced = 0;
+        // Sum of all T3 and T4 ever produced (approximate from current + buildings)
+        for (const resId of RESOURCE_IDS) {
+            const tier = RESOURCES[resId].tier;
+            if (tier === 3 || tier === 4) {
+                totalAdvanced += game.resources[resId];
             }
         }
-    },
-    
-    // ==========================================
-    // CRAFTING SYSTEM
-    // ==========================================
-    
-    canCraft(recipeKey) {
-        const recipe = RECIPES[recipeKey];
-        return this.canAfford(recipe.inputs);
-    },
-    
-    craft(recipeKey) {
-        const recipe = RECIPES[recipeKey];
-        if (!this.canAfford(recipe.inputs)) return false;
-        
-        this.spendResources(recipe.inputs);
-        this.addResource(recipe.output, recipe.amount);
-        
-        // Track stats
-        if (recipe.output === 'circuits') this.stats.totalCircuitsCrafted += recipe.amount;
-        if (recipe.output === 'alloys') this.stats.totalAlloysCrafted += recipe.amount;
-        if (recipe.output === 'code') this.stats.totalCodeCrafted += recipe.amount;
-        if (recipe.output === 'aiCores') this.stats.totalAICoresCrafted += recipe.amount;
-        if (recipe.output === 'quantumCells') this.stats.totalQuantumCellsCrafted += recipe.amount;
-        if (recipe.output === 'nanofibers') this.stats.totalNanofibersCrafted += recipe.amount;
-        
-        return true;
-    },
-    
-    // ==========================================
-    // RESEARCH SYSTEM
-    // ==========================================
-    
-    canResearch(techKey) {
-        if (this.research[techKey]) return false;
-        const tech = RESEARCH[techKey];
-        // Check requirements
-        for (const req of tech.requires) {
-            if (!this.research[req]) return false;
-        }
-        return this.canAfford(tech.cost);
-    },
-    
-    isResearchAvailable(techKey) {
-        if (this.research[techKey]) return true; // Already done
-        const tech = RESEARCH[techKey];
-        for (const req of tech.requires) {
-            if (!this.research[req]) return false;
-        }
-        return true;
-    },
-    
-    doResearch(techKey) {
-        if (!this.canResearch(techKey)) return false;
-        const tech = RESEARCH[techKey];
-        this.spendResources(tech.cost);
-        this.research[techKey] = true;
-        this.stats.totalResearchCompleted++;
-        
-        // Apply effect
-        tech.effect();
-        
-        showToast(`🔬 Research Complete: ${tech.name}`, 'info');
-        return true;
-    },
-    
-    // Re-apply all completed research effects (for loading saves)
-    reapplyResearch() {
-        this.researchBonuses = {
-            energyDrillMult: 1, mineralMinerMult: 1, dataScannerMult: 1,
-            processorEfficiency: 1, globalProductionMult: 1,
-            extractorMult: 1, processorMult: 1, factoryMult: 1,
-            t1StorageBonus: 0, t2StorageBonus: 0, t3StorageBonus: 0,
-            storageBuildingMult: 1, storageGlobalMult: 1,
-            shardMult: 1, prestigeStartBonus: 0, prestigeProductionMult: false,
-            transcendenceMult: 1, clickMult: 1,
-        };
-        this.automationUnlocks = {
-            autoBuyExtractors: false, autoBuyProcessors: false, autoBuyFactories: false,
-            autoBuyAll: false, autoCraftT2: false, autoCraftT3: false, autoSell: false,
-        };
-        this.prestigeUnlocked = false;
-        
-        for (const key in RESEARCH) {
-            if (this.research[key]) {
-                RESEARCH[key].effect();
+        // Also count from building production rates
+        for (const bId in BUILDINGS) {
+            const b = BUILDINGS[bId];
+            for (const resId in b.produces) {
+                if (RESOURCES[resId].tier >= 3) {
+                    totalAdvanced += b.produces[resId] * game.buildings[bId] * 100; // estimate
+                }
             }
         }
-    },
-    
-    // ==========================================
-    // PRESTIGE SYSTEM
-    // ==========================================
-    
-    getPrestigeShards() {
-        // Based on total T3 resources produced
-        const t3Total = this.stats.totalAICoresCrafted + this.stats.totalQuantumCellsCrafted + this.stats.totalNanofibersCrafted;
-        // Also count current T3 + building-produced
-        const currentT3 = this.resources.aiCores + this.resources.quantumCells + this.resources.nanofibers;
-        const total = t3Total + currentT3;
-        
-        let shards = Math.floor(Math.pow(total / 5, 0.7));
-        
-        // Research bonus
-        shards = Math.floor(shards * this.researchBonuses.shardMult);
-        
-        // Prestige upgrade bonus
-        if (this.prestigeUpgrades.shardMultiplier > 0) shards *= 2;
-        
-        // Achievement bonuses
-        if (this.achievements.prestige_3) shards = Math.floor(shards * 1.1);
-        if (this.achievements.prestige_5a) shards = Math.floor(shards * 1.2);
-        if (this.achievements.prestige_10a) shards = Math.floor(shards * 1.5);
-        
+
+        let shards = Math.floor(Math.pow(totalAdvanced / 5, 0.7));
+
+        // Shard multipliers
+        if (game.prestigeUpgrades.shardMagnet) shards = Math.floor(shards * 1.1);
+        if (game.prestigeUpgrades.shardDoubler) shards *= 2;
+        for (const rId in RESEARCH) {
+            if (game.research[rId] && RESEARCH[rId].effect.shardMult) {
+                shards = Math.floor(shards * (1 + RESEARCH[rId].effect.shardMult));
+            }
+        }
+
         return Math.max(0, shards);
-    },
-    
-    doPrestige() {
-        const shards = this.getPrestigeShards();
+    }
+
+    // ===== GAME ACTIONS =====
+
+    function gatherResource(resId, e) {
+        const power = getClickPower();
+        addResource(resId, power);
+        game.stats.totalClicks++;
+        if (!game.stats.totalGathered[resId]) game.stats.totalGathered[resId] = 0;
+        game.stats.totalGathered[resId] += power;
+
+        // Floating number
+        if (e) {
+            const rect = e.target.getBoundingClientRect();
+            showFloatingNumber(`+${power}`, rect.left + rect.width / 2, rect.top);
+        }
+    }
+
+    function craftRecipe(recipe) {
+        if (!canAfford(recipe.costs)) return;
+        const cap = getResourceCap(recipe.output);
+        if (game.resources[recipe.output] >= cap) return;
+        spendResources(recipe.costs);
+        addResource(recipe.output, recipe.amount);
+        game.stats.totalCrafts++;
+    }
+
+    function buyBuilding(buildingId) {
+        const costs = getBuildingCost(buildingId);
+        if (!canAfford(costs)) return;
+        if (!isBuildingUnlocked(buildingId)) return;
+        spendResources(costs);
+        game.buildings[buildingId]++;
+        game.stats.buildingsBuilt++;
+    }
+
+    function startResearch(researchId) {
+        if (game.research[researchId]) return;
+        if (game.researchQueue) return;
+        if (!isResearchUnlocked(researchId)) return;
+        const r = RESEARCH[researchId];
+        if (!canAfford(r.costs)) return;
+        spendResources(r.costs);
+        game.researchQueue = { id: researchId, progress: 0, total: r.time };
+    }
+
+    function completeResearch(researchId) {
+        game.research[researchId] = true;
+        game.researchQueue = null;
+        game.stats.researchCompleted++;
+        showToast('🔬 Research Complete', RESEARCH[researchId].name, 'achievement');
+    }
+
+    function doPrestige() {
+        if (!game.research.singularityTheory) return;
+        const shards = getPrestigeShards();
         if (shards <= 0) return;
-        
-        // Save persistent data
-        const savedShards = this.resources.shards + shards;
-        const savedPrestigeUpgrades = { ...this.prestigeUpgrades };
-        const savedMilestones = { ...this.milestones };
-        const savedAchievements = { ...this.achievements };
-        const savedStats = { ...this.stats };
-        savedStats.totalPrestiges++;
-        savedStats.totalShardsEarned += shards;
-        savedStats.currentRunTime = 0;
-        
-        // Reset game state
-        this.resetState();
-        
-        // Restore persistent data
-        this.resources.shards = savedShards;
-        this.prestigeUpgrades = savedPrestigeUpgrades;
-        this.milestones = savedMilestones;
-        this.achievements = savedAchievements;
-        this.stats = savedStats;
-        
-        // Apply prestige upgrade bonuses
-        if (this.prestigeUpgrades.startEnergy > 0) this.resources.energy = 200;
-        if (this.prestigeUpgrades.startMinerals > 0) this.resources.minerals = 200;
-        if (this.prestigeUpgrades.startData > 0) this.resources.data = 200;
-        
-        // Research start bonus
-        if (this.researchBonuses.prestigeStartBonus > 0) {
-            const bonus = this.researchBonuses.prestigeStartBonus;
-            this.resources.energy = Math.max(this.resources.energy, bonus);
-            this.resources.minerals = Math.max(this.resources.minerals, bonus);
-            this.resources.data = Math.max(this.resources.data, bonus);
+
+        const savedShards = game.resources.shards + shards;
+        const savedPrestigeUpgrades = { ...game.prestigeUpgrades };
+        const savedAchievements = { ...game.achievements };
+        const savedStats = { ...game.stats };
+        savedStats.prestigeCount++;
+
+        // Temporal echo: keep 10% of resources
+        let keptResources = {};
+        if (game.research.temporalEcho || savedPrestigeUpgrades.temporalEcho) {
+            for (const resId of RESOURCE_IDS) {
+                if (RESOURCES[resId].tier <= 4) {
+                    keptResources[resId] = Math.floor(game.resources[resId] * 0.1);
+                }
+            }
         }
-        
-        // Keep extractors
-        if (this.prestigeUpgrades.keepExtractors > 0) {
-            this.buildings.energyDrill.count = 1;
-            this.buildings.mineralMiner.count = 1;
-            this.buildings.dataScanner.count = 1;
+
+        // Reset
+        const newState = createDefaultState();
+        newState.resources.shards = savedShards;
+        newState.prestigeUpgrades = savedPrestigeUpgrades;
+        newState.achievements = savedAchievements;
+        newState.stats = savedStats;
+
+        // Quick start
+        if (savedPrestigeUpgrades.quickStart) {
+            newState.resources.energy = 100;
+            newState.resources.minerals = 100;
+            newState.resources.data = 100;
         }
-        
-        // Keep research
-        if (this.prestigeUpgrades.keepResearch1 > 0) {
-            this.research.efficientDrills = true;
-            this.research.efficientMiners = true;
-            this.research.efficientScanners = true;
+
+        // Temporal echo
+        for (const resId in keptResources) {
+            newState.resources[resId] = Math.max(newState.resources[resId], keptResources[resId]);
         }
-        
+
+        // Persistent memory: keep extractors
+        if (savedPrestigeUpgrades.persistentMemory) {
+            newState.buildings.energyDrill = game.buildings.energyDrill;
+            newState.buildings.mineralMiner = game.buildings.mineralMiner;
+            newState.buildings.dataScanner = game.buildings.dataScanner;
+        }
+
+        // Research echo: keep efficiency branch
+        if (savedPrestigeUpgrades.researchEcho) {
+            for (const rId in RESEARCH) {
+                if (RESEARCH[rId].branch === 'efficiency' && game.research[rId]) {
+                    newState.research[rId] = true;
+                }
+            }
+        }
+
         // Auto-start
-        if (this.prestigeUpgrades.autoUnlock > 0) {
-            this.automationUnlocks.autoBuyExtractors = true;
+        if (savedPrestigeUpgrades.autoStart) {
+            newState.research.autoExtractors = true;
+            newState.research.autoCrafting1 = true;
+            newState.automation.extractors = true;
+            newState.automation.craftT2 = true;
         }
-        
-        // Re-apply research
-        this.reapplyResearch();
-        
-        showToast(`🔮 Singularity! Earned ${shards} Shards!`, 'prestige');
-        this.saveGame();
-    },
-    
-    buyPrestigeUpgrade(key) {
-        const upgrade = PRESTIGE_UPGRADES[key];
-        if (!upgrade) return false;
-        if (this.prestigeUpgrades[key] >= (upgrade.maxLevel || 1)) return false;
-        if (upgrade.requires && this.prestigeUpgrades[upgrade.requires] <= 0) return false;
-        if (this.resources.shards < upgrade.cost) return false;
-        
-        this.resources.shards -= upgrade.cost;
-        this.prestigeUpgrades[key]++;
-        
-        showToast(`✨ Purchased: ${upgrade.name}`, 'prestige');
-        return true;
-    },
-    
-    // ==========================================
-    // MANUAL GATHERING
-    // ==========================================
-    
-    gatherResource(resource) {
-        let amount = 1;
-        amount *= this.researchBonuses.clickMult;
-        if (this.prestigeUpgrades.clickBoost > 0) amount *= 10;
-        
-        // Achievement click bonuses
-        if (this.achievements.gather_1) amount += 1;
-        if (this.achievements.gather_100) amount += 2;
-        if (this.achievements.gather_1000) amount += 5;
-        if (this.achievements.gather_10000) amount += 10;
-        
-        // Event click boost
-        for (const evt of this.activeEvents) {
-            if (evt.effect === 'clickBoost') amount *= evt.mult;
-        }
-        
-        this.addResource(resource, amount);
-        this.stats.totalClicks++;
-        
-        // Track totals
-        if (resource === 'energy') this.stats.totalEnergyGathered += amount;
-        if (resource === 'minerals') this.stats.totalMineralsGathered += amount;
-        if (resource === 'data') this.stats.totalDataGathered += amount;
-        
-        return amount;
-    },
-    
-    // ==========================================
-    // EVENTS SYSTEM
-    // ==========================================
-    
-    tickEvents(dt) {
-        // Decrease event timers
-        this.activeEvents = this.activeEvents.filter(evt => {
-            evt.remaining -= dt;
-            return evt.remaining > 0;
-        });
-        
-        // Random event chance
-        this.eventTimer += dt;
-        if (this.eventTimer >= 1) {
-            this.eventTimer = 0;
-            // ~2% chance per second
-            if (Math.random() < 0.02) {
-                this.triggerRandomEvent();
+
+        game = newState;
+        showToast('🔮 Prestige!', `Gained ${shards} Singularity Shards!`, 'prestige-toast');
+        renderAll();
+    }
+
+    function buyPrestigeUpgrade(upgradeId) {
+        const upg = PRESTIGE_UPGRADES.find(u => u.id === upgradeId);
+        if (!upg) return;
+        if (game.prestigeUpgrades[upgradeId]) return;
+        if (game.resources.shards < upg.cost) return;
+        game.resources.shards -= upg.cost;
+        game.prestigeUpgrades[upgradeId] = true;
+        showToast('🔮 Upgrade Purchased', upg.name, 'prestige-toast');
+    }
+
+    // ===== GAME LOOP =====
+
+    let lastFrameTime = performance.now();
+    let autoTimer = 0;
+    let eventTimer = 0;
+    let saveTimer = 0;
+
+    function gameLoop(now) {
+        try {
+            const rawDt = (now - lastFrameTime) / 1000;
+            lastFrameTime = now;
+            const dt = Math.min(rawDt, 0.1); // cap delta
+
+            const speed = game.prestigeUpgrades.temporalMastery ? 1.5 : 1;
+            const effectiveDt = dt * speed;
+
+            // Update timers
+            game.stats.timePlayed += dt;
+            saveTimer += dt * 1000;
+            eventTimer += dt;
+            autoTimer += effectiveDt;
+
+            // Production tick
+            tickProduction(effectiveDt);
+
+            // Research tick
+            tickResearch(effectiveDt);
+
+            // Automation tick
+            const autoInterval = game.research.smartAutomation ? 0.5 : 1;
+            if (autoTimer >= autoInterval) {
+                autoTimer -= autoInterval;
+                tickAutomation();
             }
-        }
-    },
-    
-    triggerRandomEvent() {
-        const evt = EVENTS[Math.floor(Math.random() * EVENTS.length)];
-        this.stats.totalEvents++;
-        
-        if (evt.duration > 0) {
-            this.activeEvents.push({
-                ...evt,
-                remaining: evt.duration,
+
+            // Events
+            const eventChance = EVENT_CHANCE * dt * (game.research.realityWarping ? 2 : 1);
+            if (Math.random() < eventChance) {
+                triggerRandomEvent();
+            }
+
+            // Clean expired events
+            game.activeEvents = game.activeEvents.filter(ev => {
+                if (ev.duration === 0) return false;
+                return Date.now() < ev.endTime;
             });
-            showToast(`${evt.icon} ${evt.name}: ${evt.desc}`, 'event');
-        } else {
-            // Instant effect
-            if (evt.effect === 'freeT1') {
-                this.addResource('energy', evt.amount);
-                this.addResource('minerals', evt.amount);
-                this.addResource('data', evt.amount);
-            } else if (evt.effect === 'freeT2') {
-                this.addResource('circuits', evt.amount);
-                this.addResource('alloys', evt.amount);
-                this.addResource('code', evt.amount);
+
+            // Auto-save
+            if (saveTimer >= AUTO_SAVE_INTERVAL) {
+                saveTimer = 0;
+                saveGame();
             }
-            showToast(`${evt.icon} ${evt.name}: ${evt.desc}`, 'event');
-        }
-    },
-    
-    // ==========================================
-    // AUTOMATION TICK
-    // ==========================================
-    
-    tickAutomation() {
-        // Auto-buyers
-        for (const bKey in this.automation.buyers) {
-            if (!this.automation.buyers[bKey]) continue;
-            if (!this.isAutoBuyerUnlocked(bKey)) continue;
-            this.buyBuilding(bKey);
-        }
-        
-        // Auto-crafters
-        for (const rKey in this.automation.crafters) {
-            if (!this.automation.crafters[rKey]) continue;
-            if (!this.isAutoCrafterUnlocked(rKey)) continue;
-            this.craft(rKey);
-        }
-        
-        // Auto-sellers (convert excess to energy)
-        for (const rKey in this.automation.sellers) {
-            if (!this.automation.sellers[rKey]) continue;
-            if (!this.automationUnlocks.autoSell) continue;
-            const cap = this.getResourceCap(rKey);
-            if (this.resources[rKey] >= cap * 0.9 && rKey !== 'energy') {
-                const sellAmount = this.resources[rKey] * 0.1;
-                this.resources[rKey] -= sellAmount;
-                const energyGain = sellAmount * (RESOURCES[rKey].tier === 1 ? 0.5 : RESOURCES[rKey].tier === 2 ? 5 : 50);
-                this.addResource('energy', energyGain);
-            }
-        }
-    },
-    
-    isAutoBuyerUnlocked(buildingKey) {
-        const cat = BUILDINGS[buildingKey].category;
-        if (cat === 'extractors') return this.automationUnlocks.autoBuyExtractors;
-        if (cat === 'processors') return this.automationUnlocks.autoBuyProcessors;
-        if (cat === 'factories') return this.automationUnlocks.autoBuyFactories;
-        if (cat === 'storage' || cat === 'power') return this.automationUnlocks.autoBuyAll;
-        return false;
-    },
-    
-    isAutoCrafterUnlocked(recipeKey) {
-        const tier = RESOURCES[RECIPES[recipeKey].output].tier;
-        if (tier === 2) return this.automationUnlocks.autoCraftT2;
-        if (tier === 3) return this.automationUnlocks.autoCraftT3;
-        return false;
-    },
-    
-    // ==========================================
-    // GAME LOOP
-    // ==========================================
-    
-    tick(dt) {
-        // dt in seconds
-        
-        // Production
-        for (const rKey in RESOURCES) {
-            if (RESOURCES[rKey].tier === 4) continue;
-            const rate = this.getProductionRate(rKey);
-            if (rate !== 0) {
-                this.addResource(rKey, rate * dt);
-                // Track totals for positive production
-                if (rate > 0) {
-                    if (rKey === 'energy') this.stats.totalEnergyGathered += rate * dt;
-                    if (rKey === 'minerals') this.stats.totalMineralsGathered += rate * dt;
-                    if (rKey === 'data') this.stats.totalDataGathered += rate * dt;
-                }
-            }
-        }
-        
-        // Events
-        this.tickEvents(dt);
-        
-        // Stats
-        this.stats.totalTimePlayed += dt;
-        this.stats.currentRunTime += dt;
-        
-        // Check achievements
-        this.checkAchievements();
-        this.checkMilestones();
-    },
-    
-    startGameLoop() {
-        const loop = () => {
-            const now = Date.now();
-            const dt = Math.min((now - this.lastTick) / 1000, 5); // Cap at 5s per tick
-            this.lastTick = now;
-            
-            this.tick(dt);
-            
-            // Automation runs every tick
-            this.tickAutomation();
-            
+
+            // Check achievements
+            checkAchievements();
+
             // Update UI
-            this.updateUI();
-            
-            requestAnimationFrame(loop);
-        };
-        this.lastTick = Date.now();
-        requestAnimationFrame(loop);
-    },
-    
-    // ==========================================
-    // OFFLINE PROGRESS
-    // ==========================================
-    
-    calculateOfflineProgress(offlineSeconds) {
-        if (offlineSeconds <= 0) return;
-        // Cap offline progress at 8 hours
-        offlineSeconds = Math.min(offlineSeconds, 8 * 3600);
-        
-        // Simulate in 1-second chunks (simplified)
-        const chunks = Math.min(offlineSeconds, 1000); // Max 1000 iterations
-        const chunkSize = offlineSeconds / chunks;
-        
-        for (let i = 0; i < chunks; i++) {
-            for (const rKey in RESOURCES) {
-                if (RESOURCES[rKey].tier === 4) continue;
-                const rate = this.getProductionRate(rKey);
-                if (rate > 0) {
-                    this.addResource(rKey, rate * chunkSize);
+            updateUI();
+        } catch (e) {
+            console.error('Game loop error:', e);
+        }
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    function tickProduction(dt) {
+        for (const bId in BUILDINGS) {
+            const b = BUILDINGS[bId];
+            const count = game.buildings[bId];
+            if (count === 0) continue;
+            if (Object.keys(b.produces).length === 0) continue;
+
+            const mult = getProductionMultiplier(bId);
+
+            // Check if we can consume
+            let canProduce = true;
+            for (const resId in b.consumes) {
+                const needed = b.consumes[resId] * count * mult * dt;
+                if (game.resources[resId] < needed) {
+                    canProduce = false;
+                    break;
                 }
             }
-            this.stats.totalTimePlayed += chunkSize;
-            this.stats.currentRunTime += chunkSize;
-        }
-        
-        showToast(`⏰ Welcome back! ${formatTime(offlineSeconds)} of offline progress applied.`, 'info');
-    },
-    
-    // ==========================================
-    // ACHIEVEMENTS & MILESTONES
-    // ==========================================
-    
-    checkAchievements() {
-        for (const ach of ACHIEVEMENTS) {
-            if (this.achievements[ach.id]) continue;
-            try {
-                if (ach.check()) {
-                    this.achievements[ach.id] = true;
-                    showToast(`🏆 Achievement: ${ach.name}!`, 'achievement');
+
+            if (canProduce) {
+                // Consume
+                for (const resId in b.consumes) {
+                    game.resources[resId] -= b.consumes[resId] * count * mult * dt;
+                    game.resources[resId] = Math.max(0, game.resources[resId]);
                 }
-            } catch (e) { /* ignore check errors */ }
+                // Produce
+                for (const resId in b.produces) {
+                    addResource(resId, b.produces[resId] * count * mult * dt);
+                }
+            }
         }
-    },
-    
-    checkMilestones() {
-        for (const m of MILESTONES) {
-            if (this.milestones[m.id]) continue;
+    }
+
+    function tickResearch(dt) {
+        if (!game.researchQueue) return;
+        let speed = 1;
+        for (const ev of game.activeEvents) {
+            if (ev.effect.researchSpeed) speed *= ev.effect.researchSpeed;
+        }
+        game.researchQueue.progress += dt * speed;
+        if (game.researchQueue.progress >= game.researchQueue.total) {
+            completeResearch(game.researchQueue.id);
+        }
+    }
+
+    function tickAutomation() {
+        // Auto-buy extractors
+        if (game.automation.extractors && game.research.autoExtractors) {
+            for (const bId of ['energyDrill', 'mineralMiner', 'dataScanner']) {
+                const costs = getBuildingCost(bId);
+                if (canAfford(costs)) buyBuilding(bId);
+            }
+        }
+
+        // Auto-buy processors
+        if (game.automation.processors && game.research.autoProcessors) {
+            for (const bId of ['circuitFoundry', 'alloySmelter', 'codeCompiler']) {
+                if (isBuildingUnlocked(bId)) {
+                    const costs = getBuildingCost(bId);
+                    if (canAfford(costs)) buyBuilding(bId);
+                }
+            }
+        }
+
+        // Auto-buy factories
+        if (game.automation.factories && game.research.autoFactories) {
+            for (const bId of ['aiLab', 'quantumReactor', 'nanoAssembler']) {
+                if (isBuildingUnlocked(bId)) {
+                    const costs = getBuildingCost(bId);
+                    if (canAfford(costs)) buyBuilding(bId);
+                }
+            }
+        }
+
+        // Auto-craft T2
+        if (game.automation.craftT2 && game.research.autoCrafting1) {
+            for (const r of RECIPES) {
+                if (RESOURCES[r.output].tier === 2 && canAfford(r.costs)) {
+                    craftRecipe(r);
+                }
+            }
+        }
+
+        // Auto-craft T3
+        if (game.automation.craftT3 && game.research.autoCrafting2) {
+            for (const r of RECIPES) {
+                if (RESOURCES[r.output].tier === 3 && canAfford(r.costs)) {
+                    craftRecipe(r);
+                }
+            }
+        }
+
+        // Auto-craft T4
+        if (game.automation.craftT4 && game.research.autoCrafting3) {
+            for (const r of RECIPES) {
+                if (RESOURCES[r.output].tier === 4 && isRecipeUnlocked(r) && canAfford(r.costs)) {
+                    craftRecipe(r);
+                }
+            }
+        }
+    }
+
+    function triggerRandomEvent() {
+        // Filter events based on game progress
+        const available = EVENTS.filter(ev => {
+            if (ev.effect.prodBonus) {
+                for (const resId in ev.effect.prodBonus) {
+                    if (RESOURCES[resId].tier >= 3 && !game.research.factoryBlueprints) return false;
+                    if (RESOURCES[resId].tier >= 4 && !game.research.advFactoryBlueprints) return false;
+                }
+            }
+            if (ev.effect.instant) {
+                for (const resId in ev.effect.instant) {
+                    if (RESOURCES[resId].tier >= 3 && !game.research.factoryBlueprints) return false;
+                }
+            }
+            return true;
+        });
+
+        if (available.length === 0) return;
+
+        const event = available[Math.floor(Math.random() * available.length)];
+        game.stats.eventsTriggered++;
+
+        // Apply instant effects
+        if (event.effect.instant) {
+            for (const resId in event.effect.instant) {
+                let amount = event.effect.instant[resId];
+                if (game.research.realityWarping) amount *= 2;
+                addResource(resId, amount);
+            }
+        }
+
+        // Add timed effect
+        if (event.duration > 0) {
+            const dur = event.duration * (game.research.realityWarping ? 2 : 1);
+            game.activeEvents.push({
+                name: event.name,
+                desc: event.desc,
+                effect: event.effect,
+                duration: dur,
+                endTime: Date.now() + dur * 1000,
+            });
+        }
+
+        showToast(event.name, event.desc, 'event', event.duration > 0 ? event.duration : undefined);
+    }
+
+    function checkAchievements() {
+        for (const ach of ACHIEVEMENTS) {
+            if (game.achievements[ach.id]) continue;
             try {
-                if (m.check()) {
-                    this.milestones[m.id] = true;
-                    showToast(`⭐ Milestone: ${m.name}!`, 'achievement');
+                if (ach.check(game)) {
+                    game.achievements[ach.id] = true;
+                    game.stats.achievementsUnlocked++;
+                    showToast('🏆 Achievement!', `${ach.icon} ${ach.name} — +${ach.bonus}% production`, 'achievement');
                 }
             } catch (e) { /* ignore */ }
         }
-    },
-    
-    // ==========================================
-    // SAVE / LOAD
-    // ==========================================
-    
-    saveGame() {
-        const saveData = {
-            version: 1,
-            timestamp: Date.now(),
-            resources: this.resources,
-            buildings: {},
-            research: this.research,
-            prestigeUpgrades: this.prestigeUpgrades,
-            milestones: this.milestones,
-            achievements: this.achievements,
-            automation: this.automation,
-            stats: this.stats,
-        };
-        
-        // Save building counts and unlock states
-        for (const key in this.buildings) {
-            saveData.buildings[key] = {
-                count: this.buildings[key].count,
-                unlocked: this.buildings[key].unlocked,
-            };
-        }
-        
+    }
+
+    // ===== SAVE/LOAD =====
+
+    function saveGame() {
         try {
-            localStorage.setItem('automata_save', JSON.stringify(saveData));
-            this.lastSave = Date.now();
-            document.getElementById('last-save').textContent = 'Last save: just now';
+            game.lastSave = Date.now();
+            const data = JSON.stringify(game);
+            localStorage.setItem(SAVE_KEY, data);
+            updateSaveIndicator();
         } catch (e) {
             console.error('Save failed:', e);
         }
-    },
-    
-    loadGame() {
+    }
+
+    function loadGame() {
         try {
-            const raw = localStorage.getItem('automata_save');
-            if (!raw) return;
-            
-            const data = JSON.parse(raw);
-            
-            // Restore resources
-            for (const key in data.resources) {
-                if (this.resources.hasOwnProperty(key)) {
-                    this.resources[key] = data.resources[key] || 0;
-                }
-            }
-            
-            // Restore buildings
-            for (const key in data.buildings) {
-                if (this.buildings[key]) {
-                    this.buildings[key].count = data.buildings[key].count || 0;
-                    this.buildings[key].unlocked = data.buildings[key].unlocked || false;
-                }
-            }
-            
-            // Restore research
-            for (const key in data.research) {
-                if (this.research.hasOwnProperty(key)) {
-                    this.research[key] = data.research[key];
-                }
-            }
-            
-            // Restore prestige upgrades
-            for (const key in data.prestigeUpgrades) {
-                if (this.prestigeUpgrades.hasOwnProperty(key)) {
-                    this.prestigeUpgrades[key] = data.prestigeUpgrades[key];
-                }
-            }
-            
-            // Restore milestones
-            if (data.milestones) {
-                for (const key in data.milestones) {
-                    this.milestones[key] = data.milestones[key];
-                }
-            }
-            
-            // Restore achievements
-            if (data.achievements) {
-                for (const key in data.achievements) {
-                    this.achievements[key] = data.achievements[key];
-                }
-            }
-            
-            // Restore automation
-            if (data.automation) {
-                if (data.automation.buyers) Object.assign(this.automation.buyers, data.automation.buyers);
-                if (data.automation.crafters) Object.assign(this.automation.crafters, data.automation.crafters);
-                if (data.automation.sellers) Object.assign(this.automation.sellers, data.automation.sellers);
-            }
-            
-            // Restore stats
-            if (data.stats) {
-                Object.assign(this.stats, data.stats);
-            }
-            
-            // Re-apply research effects
-            this.reapplyResearch();
-            
+            const data = localStorage.getItem(SAVE_KEY);
+            if (!data) return false;
+            const parsed = JSON.parse(data);
+
+            // Merge with defaults to handle missing fields
+            const defaults = createDefaultState();
+            game = deepMerge(defaults, parsed);
+
             // Calculate offline progress
-            if (data.timestamp) {
-                const offlineSeconds = (Date.now() - data.timestamp) / 1000;
-                if (offlineSeconds > 10) {
-                    this.calculateOfflineProgress(offlineSeconds);
-                }
+            const now = Date.now();
+            const offlineMs = now - (game.lastTick || now);
+            const offlineSec = Math.min(offlineMs / 1000, MAX_OFFLINE_HOURS * 3600);
+
+            if (offlineSec > 10) {
+                // Simulate offline production
+                tickProduction(offlineSec * 0.5); // 50% efficiency offline
+                showToast('⏰ Welcome Back!', `Earned ${fmtTime(offlineSec)} of offline progress (50% efficiency)`, 'event');
             }
-            
-            console.log('Game loaded successfully');
+
+            game.lastTick = now;
+            return true;
         } catch (e) {
             console.error('Load failed:', e);
+            return false;
         }
-    },
-    
-    exportSave() {
-        this.saveGame();
-        const raw = localStorage.getItem('automata_save');
-        return btoa(raw);
-    },
-    
-    importSave(encoded) {
+    }
+
+    function deepMerge(target, source) {
+        const result = { ...target };
+        for (const key in source) {
+            if (source[key] !== null && typeof source[key] === 'object' && !Array.isArray(source[key]) && typeof target[key] === 'object' && target[key] !== null) {
+                result[key] = deepMerge(target[key], source[key]);
+            } else {
+                result[key] = source[key];
+            }
+        }
+        return result;
+    }
+
+    function exportSave() {
         try {
-            const raw = atob(encoded);
-            JSON.parse(raw); // Validate
-            localStorage.setItem('automata_save', raw);
-            location.reload();
-        } catch (e) {
-            showToast('❌ Invalid save data!', 'warning');
-        }
-    },
-    
-    hardReset() {
-        if (confirm('Are you sure? This will DELETE ALL progress permanently!')) {
-            if (confirm('Really? This cannot be undone!')) {
-                localStorage.removeItem('automata_save');
-                location.reload();
-            }
-        }
-    },
-    
-    startAutoSave() {
-        setInterval(() => {
-            this.saveGame();
-        }, this.saveInterval);
-    },
-    
-    // ==========================================
-    // UI SETUP
-    // ==========================================
-    
-    setupUI() {
-        // Tab navigation
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-                document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-                btn.classList.add('active');
-                document.getElementById('panel-' + btn.dataset.tab).classList.add('active');
-            });
-        });
-        
-        // Manual gather buttons
-        document.getElementById('gather-energy').addEventListener('click', (e) => {
-            const amt = this.gatherResource('energy');
-            createClickFeedback(e, '+' + formatNumber(amt));
-        });
-        document.getElementById('gather-minerals').addEventListener('click', (e) => {
-            const amt = this.gatherResource('minerals');
-            createClickFeedback(e, '+' + formatNumber(amt));
-        });
-        document.getElementById('gather-data').addEventListener('click', (e) => {
-            const amt = this.gatherResource('data');
-            createClickFeedback(e, '+' + formatNumber(amt));
-        });
-        
-        // Building category buttons
-        document.querySelectorAll('.cat-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                this.renderBuildings(btn.dataset.cat);
-            });
-        });
-        
-        // Research branch buttons
-        document.querySelectorAll('.branch-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.branch-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                this.renderResearch(btn.dataset.branch);
-            });
-        });
-        
-        // Header buttons
-        document.getElementById('btn-save').addEventListener('click', () => {
-            this.saveGame();
-            showToast('💾 Game saved!', 'info');
-        });
-        document.getElementById('btn-export').addEventListener('click', () => {
-            const data = this.exportSave();
-            navigator.clipboard.writeText(data).then(() => {
-                showToast('📤 Save copied to clipboard!', 'info');
+            saveGame();
+            const data = localStorage.getItem(SAVE_KEY);
+            const encoded = btoa(data);
+            navigator.clipboard.writeText(encoded).then(() => {
+                showToast('📤 Exported', 'Save copied to clipboard!');
             }).catch(() => {
-                prompt('Copy this save data:', data);
+                // Fallback
+                const ta = document.createElement('textarea');
+                ta.value = encoded;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                showToast('📤 Exported', 'Save copied to clipboard!');
             });
-        });
-        document.getElementById('btn-import').addEventListener('click', () => {
-            document.getElementById('modal-import').style.display = 'flex';
-        });
-        document.getElementById('btn-import-confirm').addEventListener('click', () => {
-            const data = document.getElementById('import-textarea').value.trim();
-            if (data) this.importSave(data);
-            document.getElementById('modal-import').style.display = 'none';
-        });
-        document.getElementById('btn-import-cancel').addEventListener('click', () => {
-            document.getElementById('modal-import').style.display = 'none';
-        });
-        document.getElementById('btn-reset').addEventListener('click', () => {
-            this.hardReset();
-        });
-        
-        // Prestige button
-        document.getElementById('btn-prestige').addEventListener('click', () => {
-            if (this.getPrestigeShards() > 0) {
-                if (confirm('Perform Singularity Reset? You will lose all resources, buildings, and research, but gain Singularity Shards.')) {
-                    this.doPrestige();
-                }
-            }
-        });
-        
-        // Initial renders
-        this.renderCraftGrid();
-        this.renderBuildings('extractors');
-        this.renderResearch('all');
-        this.renderAutomation();
-        this.renderPrestige();
-        this.renderAchievements();
-    },
-    
-    // ==========================================
-    // UI RENDERING
-    // ==========================================
-    
-    renderCraftGrid() {
-        const grid = document.getElementById('craft-grid');
-        grid.innerHTML = '';
-        
-        for (const key in RECIPES) {
-            const recipe = RECIPES[key];
-            const resDef = RESOURCES[recipe.output];
-            
-            const card = document.createElement('div');
-            card.className = 'craft-card';
-            card.dataset.recipe = key;
-            
-            let costHtml = '';
-            for (const r in recipe.inputs) {
-                const has = this.resources[r] || 0;
-                const need = recipe.inputs[r];
-                const cls = has >= need ? 'affordable' : 'expensive';
-                costHtml += `<span class="${cls}">${RESOURCES[r].icon} ${formatNumber(need)} ${RESOURCES[r].name}</span> `;
-            }
-            
-            card.innerHTML = `
-                <div class="craft-header">
-                    <span class="craft-name">${resDef.icon} ${resDef.name}</span>
-                </div>
-                <div class="craft-cost">${costHtml}</div>
-                <button class="btn-craft" data-recipe="${key}">Craft x1</button>
-            `;
-            
-            card.querySelector('.btn-craft').addEventListener('click', () => {
-                this.craft(key);
-            });
-            
-            grid.appendChild(card);
+        } catch (e) {
+            showToast('❌ Error', 'Export failed');
         }
-    },
-    
-    renderBuildings(category) {
-        const grid = document.getElementById('buildings-grid');
-        grid.innerHTML = '';
-        
-        for (const key in BUILDINGS) {
-            const def = BUILDINGS[key];
-            if (def.category !== category) continue;
-            
-            const card = document.createElement('div');
-            card.className = 'building-card' + (this.buildings[key].unlocked ? '' : ' locked');
-            card.dataset.building = key;
-            
-            const costs = this.getBuildingCost(key);
-            let costHtml = '';
-            for (const r in costs) {
-                const has = this.resources[r] || 0;
-                const cls = has >= costs[r] ? 'affordable' : 'expensive';
-                costHtml += `<span class="${cls}">${RESOURCES[r].icon}${formatNumber(costs[r])}</span> `;
-            }
-            
-            let statsHtml = '';
-            for (const r in def.produces) {
-                statsHtml += `+${def.produces[r]}${RESOURCES[r].icon}/s `;
-            }
-            for (const r in def.consumes) {
-                statsHtml += `-${def.consumes[r]}${RESOURCES[r].icon}/s `;
-            }
-            if (def.storageBonus) {
-                for (const r in def.storageBonus) {
-                    statsHtml += `+${def.storageBonus[r]}${RESOURCES[r].icon} cap `;
-                }
-            }
-            
-            let powerHtml = '';
-            if (def.powerUse > 0) powerHtml = `⚡ Uses ${def.powerUse} MW`;
-            else if (def.powerUse < 0) powerHtml = `⚡ Generates ${Math.abs(def.powerUse)} MW`;
-            
-            card.innerHTML = `
-                <div class="building-top">
-                    <div class="building-info">
-                        <h4>${def.icon} ${def.name}</h4>
-                        <div class="building-desc">${def.desc}</div>
+    }
+
+    function importSave(encoded) {
+        try {
+            const data = atob(encoded.trim());
+            const parsed = JSON.parse(data);
+            localStorage.setItem(SAVE_KEY, data);
+            const defaults = createDefaultState();
+            game = deepMerge(defaults, parsed);
+            game.lastTick = Date.now();
+            renderAll();
+            showToast('📥 Imported', 'Save loaded successfully!');
+        } catch (e) {
+            showToast('❌ Error', 'Invalid save data');
+        }
+    }
+
+    function hardReset() {
+        localStorage.removeItem(SAVE_KEY);
+        game = createDefaultState();
+        renderAll();
+        showToast('🗑️ Reset', 'All progress has been deleted');
+    }
+
+    // ===== UI RENDERING =====
+
+    const domCache = {};
+
+    function $(id) {
+        if (!domCache[id]) domCache[id] = document.getElementById(id);
+        return domCache[id];
+    }
+
+    function renderAll() {
+        renderResourceBar();
+        renderGatherButtons();
+        renderCraftingButtons();
+        renderBuildings();
+        renderResearch();
+        renderAutomation();
+        renderPrestige();
+        renderAchievements();
+        renderStats();
+        updateUI();
+    }
+
+    function renderResourceBar() {
+        const bar = $('resource-bar');
+        bar.innerHTML = '';
+        for (const resId of RESOURCE_IDS) {
+            const def = RESOURCES[resId];
+            // Only show resources that are relevant
+            if (def.tier >= 2 && !hasAnyOfTier(def.tier) && !canProduceTier(def.tier)) continue;
+            if (resId === 'shards' && !game.research.singularityTheory && game.resources.shards === 0) continue;
+
+            const el = document.createElement('div');
+            el.className = 'res-display';
+            el.id = `res-${resId}`;
+            el.innerHTML = `
+                <span class="res-icon">${def.icon}</span>
+                <span class="res-amount" id="res-amt-${resId}">0</span>
+                ${def.baseCap !== Infinity ? `<span class="res-cap" id="res-cap-${resId}">/ 0</span>` : ''}
+                <span class="res-rate" id="res-rate-${resId}"></span>
+            `;
+            bar.appendChild(el);
+        }
+    }
+
+    function hasAnyOfTier(tier) {
+        for (const resId of RESOURCE_IDS) {
+            if (RESOURCES[resId].tier === tier && game.resources[resId] > 0) return true;
+        }
+        return false;
+    }
+
+    function canProduceTier(tier) {
+        if (tier === 2) return game.research.processorBlueprints;
+        if (tier === 3) return game.research.factoryBlueprints;
+        if (tier === 4) return game.research.advFactoryBlueprints || game.research.darkMatterTheory;
+        return false;
+    }
+
+    function renderGatherButtons() {
+        const container = $('gather-buttons');
+        container.innerHTML = '';
+        for (const resId of ['energy', 'minerals', 'data']) {
+            const def = RESOURCES[resId];
+            const btn = document.createElement('button');
+            btn.className = 'gather-btn';
+            btn.innerHTML = `
+                <span class="emoji">${def.icon}</span>
+                <span class="label">Gather ${def.name}</span>
+                <span class="amount" id="gather-power-${resId}">+${getClickPower()}</span>
+            `;
+            btn.addEventListener('click', (e) => gatherResource(resId, e));
+            container.appendChild(btn);
+        }
+    }
+
+    function renderCraftingButtons() {
+        const container = $('crafting-buttons');
+        container.innerHTML = '';
+        for (const recipe of RECIPES) {
+            if (!isRecipeUnlocked(recipe)) continue;
+            const def = RESOURCES[recipe.output];
+            const btn = document.createElement('button');
+            btn.className = 'craft-btn';
+            btn.dataset.recipe = recipe.id;
+            btn.innerHTML = `
+                <div class="craft-header">${def.icon} Craft ${def.name}</div>
+                <div class="craft-cost" id="craft-cost-${recipe.id}"></div>
+            `;
+            btn.addEventListener('click', () => craftRecipe(recipe));
+            container.appendChild(btn);
+        }
+    }
+
+    function renderBuildings() {
+        const container = $('building-categories');
+        container.innerHTML = '';
+
+        for (const catId in BUILDING_CATEGORIES) {
+            const cat = BUILDING_CATEGORIES[catId];
+            const buildings = Object.entries(BUILDINGS).filter(([, b]) => b.cat === catId);
+            if (buildings.length === 0) continue;
+
+            // Check if any building in category is unlocked
+            const anyUnlocked = buildings.some(([id]) => isBuildingUnlocked(id));
+            if (!anyUnlocked && catId !== 'extractors' && catId !== 'storage' && catId !== 'power') continue;
+
+            const section = document.createElement('div');
+            section.className = 'building-category';
+            section.innerHTML = `<h3>${cat.name}</h3>`;
+
+            const list = document.createElement('div');
+            list.className = 'building-list';
+
+            for (const [bId, b] of buildings) {
+                const unlocked = isBuildingUnlocked(bId);
+                const card = document.createElement('div');
+                card.className = `building-card ${unlocked ? '' : 'locked'}`;
+                card.id = `bcard-${bId}`;
+                card.innerHTML = `
+                    <div class="building-top">
+                        <span class="building-name">${b.name}</span>
+                        <span class="building-count" id="bcount-${bId}">×${game.buildings[bId]}</span>
                     </div>
-                    <span class="building-count">${this.buildings[key].count}</span>
-                </div>
-                <div class="building-stats">${statsHtml}</div>
-                <div class="building-power">${powerHtml}</div>
-                <div class="building-cost">Cost: ${costHtml}</div>
-                <button class="btn-buy" data-building="${key}" ${!this.canAfford(costs) ? 'disabled' : ''}>Buy</button>
-            `;
-            
-            card.querySelector('.btn-buy').addEventListener('click', () => {
-                if (this.buyBuilding(key)) {
-                    this.renderBuildings(category);
-                }
-            });
-            
-            grid.appendChild(card);
+                    <div class="building-desc">${b.desc}</div>
+                    ${b.powerUse > 0 ? `<div class="building-power">⚡ ${b.powerUse} MW each</div>` : ''}
+                    ${b.powerGen ? `<div class="building-power" style="color:var(--accent-green)">⚡ +${b.powerGen} MW each</div>` : ''}
+                    <div class="building-cost" id="bcost-${bId}"></div>
+                    <button class="building-buy" id="bbuy-${bId}" ${unlocked ? '' : 'disabled'}>Buy</button>
+                `;
+                list.appendChild(card);
+
+                // Attach event after adding to DOM
+                setTimeout(() => {
+                    const buyBtn = document.getElementById(`bbuy-${bId}`);
+                    if (buyBtn) buyBtn.addEventListener('click', () => buyBuilding(bId));
+                }, 0);
+            }
+
+            section.appendChild(list);
+            container.appendChild(section);
         }
-    },
-    
-    renderResearch(branch) {
-        const tree = document.getElementById('research-tree');
-        tree.innerHTML = '';
-        
-        for (const key in RESEARCH) {
-            const tech = RESEARCH[key];
-            if (branch !== 'all' && tech.branch !== branch) continue;
-            
-            const available = this.isResearchAvailable(key);
-            const done = this.research[key];
-            
+    }
+
+    function renderResearch() {
+        const container = $('research-branches');
+        container.innerHTML = '';
+
+        for (const branchId in BRANCH_NAMES) {
+            const techs = Object.entries(RESEARCH).filter(([, r]) => r.branch === branchId);
+            if (techs.length === 0) continue;
+
+            const section = document.createElement('div');
+            section.className = 'research-branch';
+            section.innerHTML = `<h3>${BRANCH_NAMES[branchId]}</h3>`;
+
+            const list = document.createElement('div');
+            list.className = 'research-list';
+
+            for (const [rId, r] of techs) {
+                const completed = game.research[rId];
+                const unlocked = isResearchUnlocked(rId);
+                const inProgress = game.researchQueue && game.researchQueue.id === rId;
+
+                const card = document.createElement('div');
+                card.className = `research-card ${completed ? 'completed' : ''} ${!unlocked && !completed ? 'locked' : ''} ${inProgress ? 'in-progress' : ''}`;
+                card.id = `rcard-${rId}`;
+
+                let content = `<div class="research-name">${r.name}</div>`;
+                content += `<div class="research-desc">${r.desc}</div>`;
+
+                if (r.prereqs.length > 0 && !completed) {
+                    const prereqNames = r.prereqs.map(p => (game.research[p] ? '✅' : '❌') + ' ' + RESEARCH[p].name).join(', ');
+                    content += `<div class="research-prereq">Requires: ${prereqNames}</div>`;
+                }
+
+                if (!completed) {
+                    content += `<div class="research-time">⏱️ ${r.time}s</div>`;
+                    content += `<div class="research-cost" id="rcost-${rId}"></div>`;
+
+                    if (inProgress) {
+                        content += `<div class="research-progress"><div class="research-progress-fill" id="rprog-${rId}"></div></div>`;
+                    }
+
+                    content += completed ? '' : `<button class="research-btn" id="rbtn-${rId}" ${unlocked && !game.researchQueue ? '' : 'disabled'}>Research</button>`;
+                } else {
+                    content += `<div class="research-complete-badge">✅ Completed</div>`;
+                }
+
+                card.innerHTML = content;
+                list.appendChild(card);
+
+                if (!completed) {
+                    setTimeout(() => {
+                        const btn = document.getElementById(`rbtn-${rId}`);
+                        if (btn) btn.addEventListener('click', () => startResearch(rId));
+                    }, 0);
+                }
+            }
+
+            section.appendChild(list);
+            container.appendChild(section);
+        }
+    }
+
+    function renderAutomation() {
+        const container = $('automation-controls');
+        container.innerHTML = '';
+
+        const autoOptions = [
+            { id: 'extractors', name: '⛏️ Auto-Buy Extractors', desc: 'Automatically purchase extractors', unlock: 'autoExtractors' },
+            { id: 'processors', name: '🔧 Auto-Buy Processors', desc: 'Automatically purchase processors', unlock: 'autoProcessors' },
+            { id: 'factories', name: '🏭 Auto-Buy Factories', desc: 'Automatically purchase factories', unlock: 'autoFactories' },
+            { id: 'craftT2', name: '🔌 Auto-Craft T2', desc: 'Automatically craft T2 resources', unlock: 'autoCrafting1' },
+            { id: 'craftT3', name: '🧠 Auto-Craft T3', desc: 'Automatically craft T3 resources', unlock: 'autoCrafting2' },
+            { id: 'craftT4', name: '🌀 Auto-Craft T4', desc: 'Automatically craft T4 resources', unlock: 'autoCrafting3' },
+        ];
+
+        for (const opt of autoOptions) {
+            const unlocked = game.research[opt.unlock];
             const card = document.createElement('div');
-            card.className = `research-card branch-${tech.branch}` + 
-                (done ? ' researched' : '') + 
-                (!available && !done ? ' locked' : '');
-            card.dataset.tech = key;
-            
-            let costHtml = '';
-            for (const r in tech.cost) {
-                const has = this.resources[r] || 0;
-                const cls = has >= tech.cost[r] ? 'affordable' : 'expensive';
-                costHtml += `<span class="${cls}">${RESOURCES[r].icon}${formatNumber(tech.cost[r])}</span> `;
-            }
-            
-            let reqHtml = '';
-            if (tech.requires.length > 0) {
-                const reqNames = tech.requires.map(r => RESEARCH[r].name).join(', ');
-                reqHtml = `<div class="research-requires">Requires: ${reqNames}</div>`;
-            }
-            
+            card.className = `auto-card ${unlocked ? '' : 'locked'}`;
             card.innerHTML = `
-                <div class="research-name">
-                    ${tech.name}
-                    <span class="research-branch-tag">${tech.branch}</span>
+                <div>
+                    <div class="auto-info">${opt.name}</div>
+                    <div class="auto-desc">${unlocked ? opt.desc : '🔒 Requires: ' + RESEARCH[opt.unlock].name}</div>
                 </div>
-                <div class="research-desc">${tech.desc}</div>
-                ${reqHtml}
-                ${done ? '<div class="research-complete-badge">✅ Completed</div>' : 
-                    `<div class="research-cost">Cost: ${costHtml}</div>
-                     <button class="btn-research" data-tech="${key}" ${!this.canResearch(key) ? 'disabled' : ''}>Research</button>`}
-            `;
-            
-            if (!done) {
-                const btn = card.querySelector('.btn-research');
-                if (btn) {
-                    btn.addEventListener('click', () => {
-                        if (this.doResearch(key)) {
-                            this.renderResearch(branch);
-                        }
-                    });
-                }
-            }
-            
-            tree.appendChild(card);
-        }
-    },
-    
-    renderAutomation() {
-        // Auto-buyers
-        const buyersList = document.getElementById('auto-buyers-list');
-        buyersList.innerHTML = '';
-        for (const key in BUILDINGS) {
-            const def = BUILDINGS[key];
-            const unlocked = this.isAutoBuyerUnlocked(key);
-            
-            const item = document.createElement('div');
-            item.className = 'auto-item' + (unlocked ? '' : ' locked');
-            item.innerHTML = `
-                <div class="auto-item-info">
-                    <span class="auto-item-name">${def.icon} ${def.name}</span>
-                    <span class="auto-item-desc">Auto-buy when affordable</span>
-                </div>
-                <label class="toggle-switch">
-                    <input type="checkbox" data-autobuyer="${key}" ${this.automation.buyers[key] ? 'checked' : ''} ${!unlocked ? 'disabled' : ''}>
+                <label class="toggle">
+                    <input type="checkbox" id="auto-${opt.id}" ${game.automation[opt.id] ? 'checked' : ''} ${unlocked ? '' : 'disabled'}>
                     <span class="toggle-slider"></span>
                 </label>
             `;
-            
-            const checkbox = item.querySelector('input');
-            checkbox.addEventListener('change', () => {
-                this.automation.buyers[key] = checkbox.checked;
-                this.countAutoBuyers();
-            });
-            
-            buyersList.appendChild(item);
+            container.appendChild(card);
+
+            setTimeout(() => {
+                const cb = document.getElementById(`auto-${opt.id}`);
+                if (cb) cb.addEventListener('change', (e) => {
+                    game.automation[opt.id] = e.target.checked;
+                });
+            }, 0);
         }
-        
-        // Auto-crafters
-        const craftersList = document.getElementById('auto-craft-list');
-        craftersList.innerHTML = '';
-        for (const key in RECIPES) {
-            const recipe = RECIPES[key];
-            const resDef = RESOURCES[recipe.output];
-            const unlocked = this.isAutoCrafterUnlocked(key);
-            
-            const item = document.createElement('div');
-            item.className = 'auto-item' + (unlocked ? '' : ' locked');
-            item.innerHTML = `
-                <div class="auto-item-info">
-                    <span class="auto-item-name">${resDef.icon} ${resDef.name}</span>
-                    <span class="auto-item-desc">Auto-craft when possible</span>
-                </div>
-                <label class="toggle-switch">
-                    <input type="checkbox" data-autocrafter="${key}" ${this.automation.crafters[key] ? 'checked' : ''} ${!unlocked ? 'disabled' : ''}>
-                    <span class="toggle-slider"></span>
-                </label>
+    }
+
+    function renderPrestige() {
+        const info = $('prestige-info');
+        const unlocked = game.research.singularityTheory;
+
+        if (!unlocked && game.resources.shards === 0) {
+            info.innerHTML = `
+                <p style="color:var(--text-dim)">🔒 Research "Singularity Theory" to unlock the prestige system.</p>
             `;
-            
-            const checkbox = item.querySelector('input');
-            checkbox.addEventListener('change', () => {
-                this.automation.crafters[key] = checkbox.checked;
-                this.countAutoBuyers();
-            });
-            
-            craftersList.appendChild(item);
+            $('prestige-upgrades').innerHTML = '';
+            return;
         }
-        
-        // Auto-sellers
-        const sellersList = document.getElementById('auto-sell-list');
-        sellersList.innerHTML = '';
-        for (const key in RESOURCES) {
-            if (RESOURCES[key].tier >= 4) continue;
-            const resDef = RESOURCES[key];
-            const unlocked = this.automationUnlocks.autoSell;
-            
-            const item = document.createElement('div');
-            item.className = 'auto-item' + (unlocked ? '' : ' locked');
-            item.innerHTML = `
-                <div class="auto-item-info">
-                    <span class="auto-item-name">${resDef.icon} ${resDef.name}</span>
-                    <span class="auto-item-desc">Sell excess (>90% cap) for energy</span>
-                </div>
-                <label class="toggle-switch">
-                    <input type="checkbox" data-autoseller="${key}" ${this.automation.sellers[key] ? 'checked' : ''} ${!unlocked ? 'disabled' : ''}>
-                    <span class="toggle-slider"></span>
-                </label>
-            `;
-            
-            const checkbox = item.querySelector('input');
-            checkbox.addEventListener('change', () => {
-                this.automation.sellers[key] = checkbox.checked;
-                this.countAutoBuyers();
-            });
-            
-            sellersList.appendChild(item);
+
+        const shards = getPrestigeShards();
+        info.innerHTML = `
+            <div class="prestige-shards">🔮 ${game.resources.shards} Singularity Shards</div>
+            ${unlocked ? `
+                <div class="prestige-gain">Prestige now to gain <strong style="color:var(--accent-magenta)">${shards}</strong> shards</div>
+                <p style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px">Resets resources, buildings, and research. Keeps shards and prestige upgrades.</p>
+                <button class="prestige-btn" id="prestige-btn" ${shards > 0 ? '' : 'disabled'}>🔮 Prestige for ${shards} Shards</button>
+            ` : ''}
+        `;
+
+        if (unlocked) {
+            setTimeout(() => {
+                const btn = document.getElementById('prestige-btn');
+                if (btn) btn.addEventListener('click', () => {
+                    if (confirm(`Are you sure you want to prestige? You will gain ${shards} shards but lose most progress.`)) {
+                        doPrestige();
+                    }
+                });
+            }, 0);
         }
-    },
-    
-    countAutoBuyers() {
-        let count = 0;
-        for (const key in this.automation.buyers) {
-            if (this.automation.buyers[key]) count++;
-        }
-        for (const key in this.automation.crafters) {
-            if (this.automation.crafters[key]) count++;
-        }
-        for (const key in this.automation.sellers) {
-            if (this.automation.sellers[key]) count++;
-        }
-        this.stats.autoBuyersEnabled = count;
-    },
-    
-    renderPrestige() {
+
         // Prestige upgrades
-        const grid = document.getElementById('prestige-grid');
-        grid.innerHTML = '';
-        
-        for (const key in PRESTIGE_UPGRADES) {
-            const upgrade = PRESTIGE_UPGRADES[key];
-            const purchased = this.prestigeUpgrades[key] > 0;
-            const canBuy = !purchased && this.resources.shards >= upgrade.cost && 
-                (!upgrade.requires || this.prestigeUpgrades[upgrade.requires] > 0);
-            
+        const upgContainer = $('prestige-upgrades');
+        upgContainer.innerHTML = '';
+
+        for (const upg of PRESTIGE_UPGRADES) {
+            const purchased = game.prestigeUpgrades[upg.id];
+            const canBuy = game.resources.shards >= upg.cost && !purchased;
             const card = document.createElement('div');
-            card.className = 'prestige-upgrade-card' + (purchased ? ' purchased' : '') + (!canBuy && !purchased ? ' locked' : '');
-            
+            card.className = `prestige-upgrade-card ${purchased ? 'purchased' : ''} ${!canBuy && !purchased ? 'locked' : ''}`;
             card.innerHTML = `
-                <div class="prestige-upgrade-name">${upgrade.name}</div>
-                <div class="prestige-upgrade-desc">${upgrade.desc}</div>
-                <div class="prestige-upgrade-cost">🔮 ${upgrade.cost} Shards</div>
-                ${purchased ? '<div class="research-complete-badge">✅ Purchased</div>' :
-                    `<button class="btn-prestige-buy" data-pupgrade="${key}" ${!canBuy ? 'disabled' : ''}>Purchase</button>`}
+                <div class="pu-name">${upg.name}</div>
+                <div class="pu-desc">${upg.desc}</div>
+                <div class="pu-cost">🔮 ${upg.cost} Shards</div>
+                ${purchased ? '<div style="color:var(--accent-green);font-size:0.75rem">✅ Purchased</div>' :
+                    `<button class="pu-btn" id="pu-${upg.id}" ${canBuy ? '' : 'disabled'}>Buy</button>`}
             `;
-            
+            upgContainer.appendChild(card);
+
             if (!purchased) {
-                const btn = card.querySelector('.btn-prestige-buy');
-                if (btn) {
-                    btn.addEventListener('click', () => {
-                        if (this.buyPrestigeUpgrade(key)) {
-                            this.renderPrestige();
-                        }
+                setTimeout(() => {
+                    const btn = document.getElementById(`pu-${upg.id}`);
+                    if (btn) btn.addEventListener('click', () => {
+                        buyPrestigeUpgrade(upg.id);
+                        renderPrestige();
                     });
-                }
+                }, 0);
             }
-            
-            grid.appendChild(card);
         }
-        
-        // Milestones
-        const mList = document.getElementById('milestone-list');
-        mList.innerHTML = '';
-        for (const m of MILESTONES) {
-            const achieved = this.milestones[m.id];
-            const item = document.createElement('div');
-            item.className = 'milestone-item' + (achieved ? ' achieved' : '');
-            item.innerHTML = `
-                <span class="milestone-icon">${m.icon}</span>
-                <div class="milestone-info">
-                    <div class="milestone-name">${m.name}</div>
-                    <div class="milestone-desc">${m.desc}</div>
-                </div>
-                <span class="milestone-status">${achieved ? '✅' : '🔒'}</span>
-            `;
-            mList.appendChild(item);
-        }
-    },
-    
-    renderAchievements() {
-        const grid = document.getElementById('achievements-grid');
-        grid.innerHTML = '';
-        
-        let unlocked = 0;
+    }
+
+    function renderAchievements() {
+        const container = $('achievement-grid');
+        container.innerHTML = '';
+
         for (const ach of ACHIEVEMENTS) {
-            if (this.achievements[ach.id]) unlocked++;
-            
+            const unlocked = game.achievements[ach.id];
             const card = document.createElement('div');
-            card.className = 'achievement-card' + (this.achievements[ach.id] ? ' unlocked' : '');
+            card.className = `achievement-card ${unlocked ? 'unlocked' : ''}`;
             card.innerHTML = `
-                <span class="achievement-icon">${this.achievements[ach.id] ? ach.icon : '🔒'}</span>
-                <div class="achievement-info">
-                    <div class="achievement-name">${ach.name}</div>
-                    <div class="achievement-desc">${ach.desc}</div>
-                    <div class="achievement-reward">Reward: ${ach.reward}</div>
-                </div>
+                <div class="ach-icon">${ach.icon}</div>
+                <div class="ach-name">${unlocked ? ach.name : '???'}</div>
+                <div class="ach-desc">${unlocked ? ach.desc : 'Hidden'}</div>
+                ${unlocked ? `<div class="ach-bonus">+${ach.bonus}% production</div>` : ''}
             `;
-            grid.appendChild(card);
+            container.appendChild(card);
         }
-        
-        document.getElementById('achievement-count').textContent = unlocked;
-        document.getElementById('achievement-total').textContent = ACHIEVEMENTS.length;
-        document.getElementById('achievement-bar').style.width = (unlocked / ACHIEVEMENTS.length * 100) + '%';
-    },
-    
-    // ==========================================
-    // UI UPDATE (called every frame)
-    // ==========================================
-    
-    updateUI() {
-        // Resource bar
-        for (const key in RESOURCES) {
-            const el = document.getElementById('res-' + key);
-            if (el) el.textContent = formatNumber(this.resources[key]);
-            
-            const rateEl = document.getElementById('rate-' + key);
-            if (rateEl && RESOURCES[key].tier < 4) {
-                rateEl.textContent = formatRate(this.getProductionRate(key));
-            }
-            
-            const barEl = document.getElementById('bar-' + key);
-            if (barEl && RESOURCES[key].tier < 4) {
-                const cap = this.getResourceCap(key);
-                barEl.style.width = Math.min(100, (this.resources[key] / cap) * 100) + '%';
-            }
+    }
+
+    function renderStats() {
+        const container = $('stats-dashboard');
+        container.innerHTML = '';
+
+        const stats = [
+            { label: '⏰ Time Played', value: fmtTime(game.stats.timePlayed) },
+            { label: '👆 Total Clicks', value: fmt(game.stats.totalClicks) },
+            { label: '🏗️ Buildings Built', value: fmt(game.stats.buildingsBuilt) },
+            { label: '🏗️ Buildings Owned', value: fmt(totalBuildings(game)) },
+            { label: '🔬 Research Completed', value: game.stats.researchCompleted },
+            { label: '🔮 Prestige Count', value: game.stats.prestigeCount },
+            { label: '🔮 Shards', value: game.resources.shards },
+            { label: '🔧 Total Crafts', value: fmt(game.stats.totalCrafts) },
+            { label: '🏆 Achievements', value: `${game.stats.achievementsUnlocked} / ${ACHIEVEMENTS.length}` },
+            { label: '🎲 Events Triggered', value: game.stats.eventsTriggered },
+            { label: '⚡ Power', value: `${getPowerUsage()} / ${getPowerCap()} MW` },
+            { label: '📈 Achievement Bonus', value: `+${ACHIEVEMENTS.reduce((s, a) => s + (game.achievements[a.id] ? a.bonus : 0), 0)}%` },
+        ];
+
+        for (const stat of stats) {
+            const card = document.createElement('div');
+            card.className = 'stat-card';
+            card.innerHTML = `
+                <div class="stat-label">${stat.label}</div>
+                <div class="stat-value">${stat.value}</div>
+            `;
+            container.appendChild(card);
         }
-        
-        // Power display
-        const powerUsed = this.getPowerUsed();
-        const powerMax = this.getPowerMax();
-        document.getElementById('power-current').textContent = powerUsed;
-        document.getElementById('power-max').textContent = powerMax;
-        const powerBar = document.getElementById('power-bar');
-        const powerPct = powerMax > 0 ? (powerUsed / powerMax) * 100 : 0;
-        powerBar.style.width = Math.min(100, powerPct) + '%';
-        if (powerPct > 90) powerBar.style.background = 'linear-gradient(90deg, var(--neon-orange), var(--neon-red))';
-        else if (powerPct > 70) powerBar.style.background = 'linear-gradient(90deg, var(--neon-yellow), var(--neon-orange))';
-        else powerBar.style.background = 'linear-gradient(90deg, var(--neon-green), var(--neon-yellow))';
-        
-        // Update gather button amounts
-        let clickAmt = 1;
-        clickAmt *= this.researchBonuses.clickMult;
-        if (this.prestigeUpgrades.clickBoost > 0) clickAmt *= 10;
-        if (this.achievements.gather_1) clickAmt += 1;
-        if (this.achievements.gather_100) clickAmt += 2;
-        if (this.achievements.gather_1000) clickAmt += 5;
-        if (this.achievements.gather_10000) clickAmt += 10;
-        document.querySelectorAll('.gather-amount').forEach(el => {
-            el.textContent = '+' + formatNumber(clickAmt);
-        });
-        
-        // Update craft buttons
-        document.querySelectorAll('.btn-craft').forEach(btn => {
-            const key = btn.dataset.recipe;
-            btn.disabled = !this.canCraft(key);
-        });
-        
-        // Update craft costs
-        document.querySelectorAll('.craft-card').forEach(card => {
-            const key = card.dataset.recipe;
-            if (!key) return;
-            const recipe = RECIPES[key];
-            const costEl = card.querySelector('.craft-cost');
-            if (costEl) {
-                let costHtml = '';
-                for (const r in recipe.inputs) {
-                    const has = this.resources[r] || 0;
-                    const need = recipe.inputs[r];
-                    const cls = has >= need ? 'affordable' : 'expensive';
-                    costHtml += `<span class="${cls}">${RESOURCES[r].icon} ${formatNumber(need)}</span> `;
+    }
+
+    // ===== UI UPDATE (per frame) =====
+
+    let uiThrottle = 0;
+
+    function updateUI() {
+        uiThrottle++;
+        if (uiThrottle % 3 !== 0) return; // Update every 3 frames (~7fps for UI)
+
+        updateResourceBar();
+        updatePowerBar();
+        updateBuildingCosts();
+        updateCraftingCosts();
+        updateResearchUI();
+        updateGatherPower();
+    }
+
+    function updateResourceBar() {
+        for (const resId of RESOURCE_IDS) {
+            const amtEl = document.getElementById(`res-amt-${resId}`);
+            if (!amtEl) continue;
+            amtEl.textContent = fmt(game.resources[resId]);
+
+            const capEl = document.getElementById(`res-cap-${resId}`);
+            if (capEl) capEl.textContent = '/ ' + fmt(getResourceCap(resId));
+
+            const rateEl = document.getElementById(`res-rate-${resId}`);
+            if (rateEl) {
+                const rate = getRate(game, resId);
+                if (Math.abs(rate) < 0.001) {
+                    rateEl.textContent = '';
+                    rateEl.className = 'res-rate zero';
+                } else {
+                    rateEl.textContent = (rate > 0 ? '+' : '') + fmt(rate) + '/s';
+                    rateEl.className = 'res-rate ' + (rate > 0 ? 'positive' : 'negative');
                 }
-                costEl.innerHTML = costHtml;
             }
-        });
-        
-        // Update building buy buttons
-        document.querySelectorAll('.btn-buy').forEach(btn => {
-            const key = btn.dataset.building;
-            if (!key) return;
-            const costs = this.getBuildingCost(key);
-            btn.disabled = !this.canAfford(costs);
-        });
-        
-        // Update building counts and costs
-        document.querySelectorAll('.building-card').forEach(card => {
-            const key = card.dataset.building;
-            if (!key) return;
-            const countEl = card.querySelector('.building-count');
-            if (countEl) countEl.textContent = this.buildings[key].count;
-            
-            const costEl = card.querySelector('.building-cost');
-            if (costEl) {
-                const costs = this.getBuildingCost(key);
-                let costHtml = 'Cost: ';
-                for (const r in costs) {
-                    const has = this.resources[r] || 0;
-                    const cls = has >= costs[r] ? 'affordable' : 'expensive';
-                    costHtml += `<span class="${cls}">${RESOURCES[r].icon}${formatNumber(costs[r])}</span> `;
+        }
+    }
+
+    function updatePowerBar() {
+        const cap = getPowerCap();
+        const usage = getPowerUsage();
+        const pct = cap > 0 ? Math.min(usage / cap * 100, 100) : 0;
+        const fill = document.getElementById('power-fill');
+        const text = document.getElementById('power-text');
+
+        if (fill) {
+            fill.style.width = pct + '%';
+            fill.className = 'power-fill' + (usage > cap ? ' over-capacity' : '');
+        }
+        if (text) {
+            text.textContent = `${usage} / ${cap} MW`;
+            text.style.color = usage > cap ? 'var(--accent-red)' : 'var(--text-primary)';
+        }
+    }
+
+    function updateBuildingCosts() {
+        for (const bId in BUILDINGS) {
+            const costEl = document.getElementById(`bcost-${bId}`);
+            if (!costEl) continue;
+            const costs = getBuildingCost(bId);
+            costEl.innerHTML = formatCosts(costs);
+
+            const buyBtn = document.getElementById(`bbuy-${bId}`);
+            if (buyBtn) {
+                buyBtn.disabled = !canAfford(costs) || !isBuildingUnlocked(bId);
+            }
+
+            const countEl = document.getElementById(`bcount-${bId}`);
+            if (countEl) countEl.textContent = '×' + game.buildings[bId];
+        }
+    }
+
+    function updateCraftingCosts() {
+        for (const recipe of RECIPES) {
+            const costEl = document.getElementById(`craft-cost-${recipe.id}`);
+            if (!costEl) continue;
+            costEl.innerHTML = formatCosts(recipe.costs);
+
+            const btn = costEl.closest('.craft-btn');
+            if (btn) {
+                const affordable = canAfford(recipe.costs);
+                const cap = getResourceCap(recipe.output);
+                const atCap = game.resources[recipe.output] >= cap;
+                btn.classList.toggle('disabled', !affordable || atCap);
+            }
+        }
+    }
+
+    function updateResearchUI() {
+        // Active research progress
+        const activeArea = $('research-active');
+        const progressArea = $('research-progress-area');
+
+        if (game.researchQueue) {
+            activeArea.style.display = 'block';
+            const r = RESEARCH[game.researchQueue.id];
+            const pct = (game.researchQueue.progress / game.researchQueue.total * 100).toFixed(1);
+            const remaining = Math.max(0, game.researchQueue.total - game.researchQueue.progress);
+            progressArea.innerHTML = `
+                <div class="active-research-name">🔄 ${r.name}</div>
+                <div class="active-research-bar"><div class="active-research-fill" style="width:${pct}%"></div></div>
+                <div class="active-research-time">${pct}% — ${fmtTime(remaining)} remaining</div>
+            `;
+        } else {
+            activeArea.style.display = 'none';
+        }
+
+        // Update research costs and buttons
+        for (const rId in RESEARCH) {
+            const costEl = document.getElementById(`rcost-${rId}`);
+            if (costEl) costEl.innerHTML = formatCosts(RESEARCH[rId].costs);
+
+            const btn = document.getElementById(`rbtn-${rId}`);
+            if (btn) {
+                btn.disabled = !isResearchUnlocked(rId) || !canAfford(RESEARCH[rId].costs) || game.researchQueue !== null || game.research[rId];
+            }
+
+            // Progress bar for in-progress
+            if (game.researchQueue && game.researchQueue.id === rId) {
+                const progEl = document.getElementById(`rprog-${rId}`);
+                if (progEl) {
+                    progEl.style.width = (game.researchQueue.progress / game.researchQueue.total * 100) + '%';
                 }
-                costEl.innerHTML = costHtml;
             }
-            
-            // Update locked state
-            if (this.buildings[key].unlocked) {
-                card.classList.remove('locked');
+        }
+    }
+
+    function updateGatherPower() {
+        const power = getClickPower();
+        for (const resId of ['energy', 'minerals', 'data']) {
+            const el = document.getElementById(`gather-power-${resId}`);
+            if (el) el.textContent = '+' + power;
+        }
+    }
+
+    function formatCosts(costs) {
+        const parts = [];
+        for (const resId in costs) {
+            const def = RESOURCES[resId];
+            const has = game.resources[resId] >= costs[resId];
+            parts.push(`<span class="${has ? 'sufficient' : 'insufficient'}">${def.icon}${fmt(costs[resId])}</span>`);
+        }
+        return parts.join(' ');
+    }
+
+    function updateSaveIndicator() {
+        const el = $('save-indicator');
+        if (el) {
+            const ago = Math.floor((Date.now() - game.lastSave) / 1000);
+            el.textContent = ago < 5 ? '💾 Just saved' : `💾 ${ago}s ago`;
+        }
+    }
+
+    // ===== TOAST & FLOATING NUMBERS =====
+
+    function showToast(title, body, type, duration) {
+        const container = $('toast-container');
+        const toast = document.createElement('div');
+        toast.className = 'toast ' + (type || '');
+        toast.innerHTML = `
+            <div class="toast-title">${title}</div>
+            <div class="toast-body">${body}</div>
+            ${duration ? `<div class="toast-timer">⏱️ ${duration}s</div>` : ''}
+        `;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 5000);
+    }
+
+    function showFloatingNumber(text, x, y) {
+        const container = $('float-container');
+        const el = document.createElement('div');
+        el.className = 'float-number';
+        el.textContent = text;
+        el.style.left = x + 'px';
+        el.style.top = y + 'px';
+        container.appendChild(el);
+        setTimeout(() => el.remove(), 1000);
+    }
+
+    // ===== TAB NAVIGATION =====
+
+    function setupTabs() {
+        const tabs = document.querySelectorAll('.tab-btn');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                if (tab.classList.contains('locked')) return;
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                const target = document.getElementById('tab-' + tab.dataset.tab);
+                if (target) target.classList.add('active');
+
+                // Re-render the active tab for freshness
+                const tabId = tab.dataset.tab;
+                if (tabId === 'buildings') renderBuildings();
+                if (tabId === 'research') renderResearch();
+                if (tabId === 'automation') renderAutomation();
+                if (tabId === 'prestige') renderPrestige();
+                if (tabId === 'achievements') renderAchievements();
+                if (tabId === 'stats') renderStats();
+            });
+        });
+    }
+
+    // ===== HEADER BUTTONS =====
+
+    function setupHeaderButtons() {
+        $('btn-save').addEventListener('click', () => {
+            saveGame();
+            showToast('💾 Saved', 'Game saved successfully!');
+        });
+
+        $('btn-export').addEventListener('click', exportSave);
+
+        $('btn-import').addEventListener('click', () => {
+            $('import-modal').style.display = 'flex';
+        });
+
+        $('import-confirm').addEventListener('click', () => {
+            const val = $('import-textarea').value;
+            if (val) importSave(val);
+            $('import-modal').style.display = 'none';
+            $('import-textarea').value = '';
+        });
+
+        $('import-cancel').addEventListener('click', () => {
+            $('import-modal').style.display = 'none';
+            $('import-textarea').value = '';
+        });
+
+        $('btn-reset').addEventListener('click', () => {
+            $('reset-modal').style.display = 'flex';
+        });
+
+        $('reset-confirm').addEventListener('click', () => {
+            if ($('reset-input').value === 'RESET') {
+                hardReset();
+                $('reset-modal').style.display = 'none';
+                $('reset-input').value = '';
             }
         });
-        
-        // Update research buttons
-        document.querySelectorAll('.btn-research').forEach(btn => {
-            const key = btn.dataset.tech;
-            if (!key) return;
-            btn.disabled = !this.canResearch(key);
+
+        $('reset-cancel').addEventListener('click', () => {
+            $('reset-modal').style.display = 'none';
+            $('reset-input').value = '';
         });
-        
-        // Update prestige info
-        if (this.prestigeUnlocked) {
-            document.getElementById('prestige-current').textContent = formatNumber(this.resources.shards);
-            document.getElementById('prestige-gain').textContent = formatNumber(this.getPrestigeShards());
-            document.getElementById('prestige-total').textContent = formatNumber(this.resources.shards + this.getPrestigeShards());
-            document.getElementById('btn-prestige').disabled = this.getPrestigeShards() <= 0;
-        }
-        
-        // Update prestige buy buttons
-        document.querySelectorAll('.btn-prestige-buy').forEach(btn => {
-            const key = btn.dataset.pupgrade;
-            if (!key) return;
-            const upgrade = PRESTIGE_UPGRADES[key];
-            const canBuy = this.prestigeUpgrades[key] <= 0 && this.resources.shards >= upgrade.cost &&
-                (!upgrade.requires || this.prestigeUpgrades[upgrade.requires] > 0);
-            btn.disabled = !canBuy;
-        });
-        
-        // Update stats
-        document.getElementById('stat-time').textContent = formatTime(this.stats.totalTimePlayed);
-        document.getElementById('stat-run-time').textContent = formatTime(this.stats.currentRunTime);
-        document.getElementById('stat-clicks').textContent = formatNumber(this.stats.totalClicks, 0);
-        document.getElementById('stat-buildings').textContent = formatNumber(this.stats.totalBuildingsBuilt, 0);
-        document.getElementById('stat-research').textContent = this.stats.totalResearchCompleted;
-        document.getElementById('stat-prestiges').textContent = this.stats.totalPrestiges;
-        document.getElementById('stat-total-energy').textContent = formatNumber(this.stats.totalEnergyGathered);
-        document.getElementById('stat-total-minerals').textContent = formatNumber(this.stats.totalMineralsGathered);
-        document.getElementById('stat-total-data').textContent = formatNumber(this.stats.totalDataGathered);
-        document.getElementById('stat-total-shards').textContent = formatNumber(this.stats.totalShardsEarned);
-        document.getElementById('stat-achievements').textContent = Object.values(this.achievements).filter(Boolean).length;
-        document.getElementById('stat-events').textContent = this.stats.totalEvents;
-        
-        // Update achievement count
-        const unlocked = Object.values(this.achievements).filter(Boolean).length;
-        document.getElementById('achievement-count').textContent = unlocked;
-        document.getElementById('achievement-bar').style.width = (unlocked / ACHIEVEMENTS.length * 100) + '%';
-        
-        // Update last save display
-        if (this.lastSave > 0) {
-            const ago = Math.floor((Date.now() - this.lastSave) / 1000);
-            document.getElementById('last-save').textContent = `Last save: ${ago}s ago`;
-        }
-        
-        // Show/hide T2, T3 resource groups based on unlock
-        const hasT2 = this.research.unlockProcessors || Object.values(this.buildings).some((b, i) => {
-            const key = Object.keys(this.buildings)[i];
-            return BUILDINGS[key].category === 'processors' && b.count > 0;
-        }) || this.resources.circuits > 0 || this.resources.alloys > 0 || this.resources.code > 0;
-        
-        const hasT3 = this.research.unlockFactories || this.resources.aiCores > 0 || this.resources.quantumCells > 0 || this.resources.nanofibers > 0;
-        
-        document.getElementById('resource-group-t2').style.display = hasT2 ? 'flex' : 'none';
-        document.getElementById('resource-group-t3').style.display = hasT3 ? 'flex' : 'none';
-        document.getElementById('resource-group-t4').style.display = (this.prestigeUnlocked || this.resources.shards > 0) ? 'flex' : 'none';
-    },
-};
+    }
 
-// ==========================================
-// TOAST NOTIFICATIONS
-// ==========================================
+    // ===== SAVE INDICATOR TIMER =====
 
-function showToast(message, type = 'info') {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    
-    const icons = { info: 'ℹ️', event: '🎲', achievement: '🏆', prestige: '🔮', warning: '⚠️' };
-    toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ️'}</span><span>${message}</span>`;
-    
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        if (toast.parentNode) toast.parentNode.removeChild(toast);
-    }, 4000);
-}
+    setInterval(updateSaveIndicator, 5000);
 
-// ==========================================
-// CLICK FEEDBACK
-// ==========================================
+    // ===== INITIALIZATION =====
 
-function createClickFeedback(event, text) {
-    const el = document.createElement('div');
-    el.className = 'click-feedback';
-    el.textContent = text;
-    el.style.left = (event.clientX || event.pageX || 100) + 'px';
-    el.style.top = (event.clientY || event.pageY || 100) + 'px';
-    document.body.appendChild(el);
-    setTimeout(() => {
-        if (el.parentNode) el.parentNode.removeChild(el);
-    }, 800);
-}
+    function init() {
+        loadGame();
+        setupTabs();
+        setupHeaderButtons();
+        renderAll();
+        lastFrameTime = performance.now();
+        requestAnimationFrame(gameLoop);
+    }
 
-// ==========================================
-// INITIALIZE
-// ==========================================
+    // Start when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
 
-document.addEventListener('DOMContentLoaded', () => {
-    Game.init();
-});
+})();

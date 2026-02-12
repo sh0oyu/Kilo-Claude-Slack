@@ -3,338 +3,140 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automata - Resource Management & Automation Game</title>
+    <title>Automata — Resource Automation Game</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Toast Container -->
-    <div id="toast-container"></div>
-
-    <!-- Main Game Container -->
-    <div id="game-container">
-        <!-- Header -->
-        <header id="game-header">
+    <div id="app">
+        <!-- HEADER -->
+        <header id="header">
             <div class="header-left">
-                <h1 class="game-title">AUTOMATA</h1>
-                <span class="game-subtitle">Resource Optimization Engine</span>
+                <h1>🤖 AUTOMATA</h1>
+                <span id="version">v2.0</span>
+            </div>
+            <div class="header-center">
+                <div class="power-bar">
+                    <span class="power-label">⚡ Power:</span>
+                    <div class="power-meter">
+                        <div id="power-fill" class="power-fill"></div>
+                    </div>
+                    <span id="power-text">0 / 0 MW</span>
+                </div>
             </div>
             <div class="header-right">
-                <div class="power-display" id="power-display">
-                    <span class="power-icon">⚡</span>
-                    <span id="power-current">0</span> / <span id="power-max">100</span> MW
-                    <div class="power-bar-container">
-                        <div class="power-bar" id="power-bar"></div>
-                    </div>
-                </div>
-                <div class="header-buttons">
-                    <button class="btn-header" id="btn-save" title="Save Game">💾 Save</button>
-                    <button class="btn-header" id="btn-export" title="Export Save">📤 Export</button>
-                    <button class="btn-header" id="btn-import" title="Import Save">📥 Import</button>
-                    <button class="btn-header btn-danger" id="btn-reset" title="Hard Reset">🗑️ Reset</button>
-                </div>
+                <span id="save-indicator">💾 Saved</span>
+                <button id="btn-save" class="btn-header" title="Save Game">💾 Save</button>
+                <button id="btn-export" class="btn-header" title="Export Save">📤</button>
+                <button id="btn-import" class="btn-header" title="Import Save">📥</button>
+                <button id="btn-reset" class="btn-header btn-danger" title="Hard Reset">🗑️</button>
             </div>
         </header>
 
-        <!-- Resource Bar (always visible) -->
-        <div id="resource-bar">
-            <div class="resource-group" id="resource-group-t1">
-                <div class="resource-item" data-resource="energy">
-                    <span class="resource-icon">⚡</span>
-                    <span class="resource-name">Energy</span>
-                    <span class="resource-amount" id="res-energy">0</span>
-                    <span class="resource-rate" id="rate-energy">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-energy"></div></div>
+        <!-- RESOURCE BAR -->
+        <div id="resource-bar"></div>
+
+        <!-- MAIN LAYOUT -->
+        <div id="main-layout">
+            <!-- SIDEBAR TABS -->
+            <nav id="sidebar">
+                <button class="tab-btn active" data-tab="resources">📦<span class="tab-label">Resources</span></button>
+                <button class="tab-btn" data-tab="buildings">🏭<span class="tab-label">Buildings</span></button>
+                <button class="tab-btn" data-tab="research">🔬<span class="tab-label">Research</span></button>
+                <button class="tab-btn" data-tab="automation">⚙️<span class="tab-label">Automation</span></button>
+                <button class="tab-btn" data-tab="prestige">🔮<span class="tab-label">Prestige</span></button>
+                <button class="tab-btn" data-tab="achievements">🏆<span class="tab-label">Achieve</span></button>
+                <button class="tab-btn" data-tab="stats">📊<span class="tab-label">Stats</span></button>
+            </nav>
+
+            <!-- CONTENT AREA -->
+            <main id="content">
+                <!-- Resources Tab -->
+                <div id="tab-resources" class="tab-content active">
+                    <h2>📦 Resource Gathering</h2>
+                    <div class="section">
+                        <h3>⛏️ Manual Gathering</h3>
+                        <div id="gather-buttons" class="gather-grid"></div>
+                    </div>
+                    <div class="section">
+                        <h3>🔧 Crafting</h3>
+                        <div id="crafting-buttons" class="craft-grid"></div>
+                    </div>
                 </div>
-                <div class="resource-item" data-resource="minerals">
-                    <span class="resource-icon">💎</span>
-                    <span class="resource-name">Minerals</span>
-                    <span class="resource-amount" id="res-minerals">0</span>
-                    <span class="resource-rate" id="rate-minerals">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-minerals"></div></div>
+
+                <!-- Buildings Tab -->
+                <div id="tab-buildings" class="tab-content">
+                    <h2>🏭 Buildings</h2>
+                    <div id="building-categories"></div>
                 </div>
-                <div class="resource-item" data-resource="data">
-                    <span class="resource-icon">📊</span>
-                    <span class="resource-name">Data</span>
-                    <span class="resource-amount" id="res-data">0</span>
-                    <span class="resource-rate" id="rate-data">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-data"></div></div>
+
+                <!-- Research Tab -->
+                <div id="tab-research" class="tab-content">
+                    <h2>🔬 Research Lab</h2>
+                    <div id="research-active" class="section" style="display:none">
+                        <h3>🔄 Currently Researching</h3>
+                        <div id="research-progress-area"></div>
+                    </div>
+                    <div id="research-branches"></div>
                 </div>
-            </div>
-            <div class="resource-group" id="resource-group-t2">
-                <div class="resource-item" data-resource="circuits">
-                    <span class="resource-icon">🔌</span>
-                    <span class="resource-name">Circuits</span>
-                    <span class="resource-amount" id="res-circuits">0</span>
-                    <span class="resource-rate" id="rate-circuits">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-circuits"></div></div>
+
+                <!-- Automation Tab -->
+                <div id="tab-automation" class="tab-content">
+                    <h2>⚙️ Automation Control</h2>
+                    <div id="automation-controls"></div>
                 </div>
-                <div class="resource-item" data-resource="alloys">
-                    <span class="resource-icon">🔩</span>
-                    <span class="resource-name">Alloys</span>
-                    <span class="resource-amount" id="res-alloys">0</span>
-                    <span class="resource-rate" id="rate-alloys">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-alloys"></div></div>
+
+                <!-- Prestige Tab -->
+                <div id="tab-prestige" class="tab-content">
+                    <h2>🔮 Prestige — Singularity</h2>
+                    <div id="prestige-info"></div>
+                    <div id="prestige-upgrades"></div>
                 </div>
-                <div class="resource-item" data-resource="code">
-                    <span class="resource-icon">💻</span>
-                    <span class="resource-name">Code</span>
-                    <span class="resource-amount" id="res-code">0</span>
-                    <span class="resource-rate" id="rate-code">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-code"></div></div>
+
+                <!-- Achievements Tab -->
+                <div id="tab-achievements" class="tab-content">
+                    <h2>🏆 Achievements</h2>
+                    <div id="achievement-grid" class="achievement-grid"></div>
                 </div>
-            </div>
-            <div class="resource-group" id="resource-group-t3">
-                <div class="resource-item" data-resource="aiCores">
-                    <span class="resource-icon">🧠</span>
-                    <span class="resource-name">AI Cores</span>
-                    <span class="resource-amount" id="res-aiCores">0</span>
-                    <span class="resource-rate" id="rate-aiCores">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-aiCores"></div></div>
+
+                <!-- Stats Tab -->
+                <div id="tab-stats" class="tab-content">
+                    <h2>📊 Statistics</h2>
+                    <div id="stats-dashboard"></div>
                 </div>
-                <div class="resource-item" data-resource="quantumCells">
-                    <span class="resource-icon">⚛️</span>
-                    <span class="resource-name">Q-Cells</span>
-                    <span class="resource-amount" id="res-quantumCells">0</span>
-                    <span class="resource-rate" id="rate-quantumCells">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-quantumCells"></div></div>
-                </div>
-                <div class="resource-item" data-resource="nanofibers">
-                    <span class="resource-icon">🧬</span>
-                    <span class="resource-name">Nanofibers</span>
-                    <span class="resource-amount" id="res-nanofibers">0</span>
-                    <span class="resource-rate" id="rate-nanofibers">+0/s</span>
-                    <div class="resource-bar-mini"><div class="resource-bar-fill" id="bar-nanofibers"></div></div>
-                </div>
-            </div>
-            <div class="resource-group" id="resource-group-t4">
-                <div class="resource-item prestige-resource" data-resource="shards">
-                    <span class="resource-icon">🔮</span>
-                    <span class="resource-name">Shards</span>
-                    <span class="resource-amount" id="res-shards">0</span>
+            </main>
+        </div>
+
+        <!-- TOAST CONTAINER -->
+        <div id="toast-container"></div>
+
+        <!-- FLOATING NUMBERS CONTAINER -->
+        <div id="float-container"></div>
+
+        <!-- IMPORT MODAL -->
+        <div id="import-modal" class="modal" style="display:none">
+            <div class="modal-content">
+                <h3>📥 Import Save</h3>
+                <textarea id="import-textarea" placeholder="Paste your save code here..."></textarea>
+                <div class="modal-buttons">
+                    <button id="import-confirm" class="btn btn-primary">Import</button>
+                    <button id="import-cancel" class="btn">Cancel</button>
                 </div>
             </div>
         </div>
 
-        <!-- Tab Navigation -->
-        <nav id="tab-nav">
-            <button class="tab-btn active" data-tab="resources">📦 Resources</button>
-            <button class="tab-btn" data-tab="buildings">🏗️ Buildings</button>
-            <button class="tab-btn" data-tab="research">🔬 Research</button>
-            <button class="tab-btn" data-tab="automation">🤖 Automation</button>
-            <button class="tab-btn" data-tab="prestige">✨ Prestige</button>
-            <button class="tab-btn" data-tab="achievements">🏆 Achievements</button>
-            <button class="tab-btn" data-tab="stats">📈 Stats</button>
-        </nav>
-
-        <!-- Tab Content -->
-        <main id="tab-content">
-            <!-- Resources Tab -->
-            <div class="tab-panel active" id="panel-resources">
-                <h2 class="panel-title">Manual Resource Gathering</h2>
-                <p class="panel-desc">Click to gather resources manually. Build extractors to automate production.</p>
-                <div class="manual-gather-grid">
-                    <button class="gather-btn" id="gather-energy">
-                        <span class="gather-icon">⚡</span>
-                        <span class="gather-label">Gather Energy</span>
-                        <span class="gather-amount">+1</span>
-                    </button>
-                    <button class="gather-btn" id="gather-minerals">
-                        <span class="gather-icon">💎</span>
-                        <span class="gather-label">Gather Minerals</span>
-                        <span class="gather-amount">+1</span>
-                    </button>
-                    <button class="gather-btn" id="gather-data">
-                        <span class="gather-icon">📊</span>
-                        <span class="gather-label">Gather Data</span>
-                        <span class="gather-amount">+1</span>
-                    </button>
+        <!-- RESET MODAL -->
+        <div id="reset-modal" class="modal" style="display:none">
+            <div class="modal-content">
+                <h3>🗑️ Hard Reset</h3>
+                <p>This will permanently delete ALL progress. Type "RESET" to confirm.</p>
+                <input id="reset-input" type="text" placeholder='Type "RESET"'>
+                <div class="modal-buttons">
+                    <button id="reset-confirm" class="btn btn-danger">Reset Everything</button>
+                    <button id="reset-cancel" class="btn">Cancel</button>
                 </div>
-                <div class="manual-craft-section">
-                    <h3 class="section-title">Manual Crafting</h3>
-                    <div class="craft-grid" id="craft-grid">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Buildings Tab -->
-            <div class="tab-panel" id="panel-buildings">
-                <h2 class="panel-title">Buildings</h2>
-                <div class="building-categories">
-                    <button class="cat-btn active" data-cat="extractors">⛏️ Extractors</button>
-                    <button class="cat-btn" data-cat="processors">⚙️ Processors</button>
-                    <button class="cat-btn" data-cat="factories">🏭 Factories</button>
-                    <button class="cat-btn" data-cat="storage">📦 Storage</button>
-                    <button class="cat-btn" data-cat="power">⚡ Power</button>
-                </div>
-                <div class="buildings-grid" id="buildings-grid">
-                    <!-- Populated by JS -->
-                </div>
-            </div>
-
-            <!-- Research Tab -->
-            <div class="tab-panel" id="panel-research">
-                <h2 class="panel-title">Research Tree</h2>
-                <div class="research-branches">
-                    <button class="branch-btn active" data-branch="all">All</button>
-                    <button class="branch-btn" data-branch="efficiency">⚡ Efficiency</button>
-                    <button class="branch-btn" data-branch="capacity">📦 Capacity</button>
-                    <button class="branch-btn" data-branch="automation">🤖 Automation</button>
-                    <button class="branch-btn" data-branch="expansion">🚀 Expansion</button>
-                    <button class="branch-btn" data-branch="transcendence">✨ Transcendence</button>
-                </div>
-                <div class="research-tree" id="research-tree">
-                    <!-- Populated by JS -->
-                </div>
-            </div>
-
-            <!-- Automation Tab -->
-            <div class="tab-panel" id="panel-automation">
-                <h2 class="panel-title">Automation</h2>
-                <p class="panel-desc">Configure automated systems to optimize your production chains.</p>
-                <div class="automation-sections">
-                    <div class="auto-section" id="auto-buyers-section">
-                        <h3 class="section-title">🛒 Auto-Buyers</h3>
-                        <p class="section-desc">Automatically purchase buildings when affordable.</p>
-                        <div class="auto-list" id="auto-buyers-list">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
-                    <div class="auto-section" id="auto-craft-section">
-                        <h3 class="section-title">⚙️ Auto-Crafters</h3>
-                        <p class="section-desc">Automatically craft higher-tier resources.</p>
-                        <div class="auto-list" id="auto-craft-list">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
-                    <div class="auto-section" id="auto-sell-section">
-                        <h3 class="section-title">💰 Auto-Sellers</h3>
-                        <p class="section-desc">Sell excess resources for energy credits.</p>
-                        <div class="auto-list" id="auto-sell-list">
-                            <!-- Populated by JS -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Prestige Tab -->
-            <div class="tab-panel" id="panel-prestige">
-                <h2 class="panel-title">Prestige - Singularity</h2>
-                <div class="prestige-info">
-                    <div class="prestige-preview">
-                        <p>Reset your progress to earn <strong>Singularity Shards</strong>.</p>
-                        <p>Shards provide permanent bonuses that persist through resets.</p>
-                        <div class="prestige-calc">
-                            <span>Current Shards: <strong id="prestige-current">0</strong></span>
-                            <span>Shards on Reset: <strong id="prestige-gain">0</strong></span>
-                            <span>Total After Reset: <strong id="prestige-total">0</strong></span>
-                        </div>
-                        <button class="btn-prestige" id="btn-prestige">🔮 Perform Singularity Reset</button>
-                    </div>
-                </div>
-                <div class="prestige-upgrades">
-                    <h3 class="section-title">Singularity Upgrades</h3>
-                    <div class="prestige-grid" id="prestige-grid">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-                <div class="prestige-milestones">
-                    <h3 class="section-title">Milestones</h3>
-                    <div class="milestone-list" id="milestone-list">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-            </div>
-
-            <!-- Achievements Tab -->
-            <div class="tab-panel" id="panel-achievements">
-                <h2 class="panel-title">Achievements</h2>
-                <div class="achievement-progress">
-                    <span id="achievement-count">0</span> / <span id="achievement-total">0</span> Unlocked
-                    <div class="achievement-bar-container">
-                        <div class="achievement-bar" id="achievement-bar"></div>
-                    </div>
-                </div>
-                <div class="achievements-grid" id="achievements-grid">
-                    <!-- Populated by JS -->
-                </div>
-            </div>
-
-            <!-- Stats Tab -->
-            <div class="tab-panel" id="panel-stats">
-                <h2 class="panel-title">Statistics Dashboard</h2>
-                <div class="stats-grid" id="stats-grid">
-                    <div class="stat-card">
-                        <span class="stat-label">Time Played</span>
-                        <span class="stat-value" id="stat-time">0s</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">This Run</span>
-                        <span class="stat-value" id="stat-run-time">0s</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Total Clicks</span>
-                        <span class="stat-value" id="stat-clicks">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Buildings Built</span>
-                        <span class="stat-value" id="stat-buildings">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Research Completed</span>
-                        <span class="stat-value" id="stat-research">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Prestige Count</span>
-                        <span class="stat-value" id="stat-prestiges">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Total Energy Gathered</span>
-                        <span class="stat-value" id="stat-total-energy">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Total Minerals Gathered</span>
-                        <span class="stat-value" id="stat-total-minerals">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Total Data Gathered</span>
-                        <span class="stat-value" id="stat-total-data">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Total Shards Earned</span>
-                        <span class="stat-value" id="stat-total-shards">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Achievements Unlocked</span>
-                        <span class="stat-value" id="stat-achievements">0</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">Events Triggered</span>
-                        <span class="stat-value" id="stat-events">0</span>
-                    </div>
-                </div>
-            </div>
-        </main>
-
-        <!-- Footer -->
-        <footer id="game-footer">
-            <span>Automata v1.0 | Auto-saves every 30s</span>
-            <span id="last-save">Last save: never</span>
-        </footer>
-    </div>
-
-    <!-- Import Modal -->
-    <div class="modal-overlay" id="modal-import" style="display:none;">
-        <div class="modal">
-            <h3>Import Save</h3>
-            <textarea id="import-textarea" placeholder="Paste your save data here..."></textarea>
-            <div class="modal-buttons">
-                <button class="btn-modal" id="btn-import-confirm">Import</button>
-                <button class="btn-modal btn-cancel" id="btn-import-cancel">Cancel</button>
             </div>
         </div>
     </div>
-
     <script src="game.js"></script>
 </body>
 </html>
