@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automata — Resource Automation Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- HEADER -->
+        <header id="header">
+            <div class="header-left">
+                <h1>🤖 AUTOMATA</h1>
+                <span id="version">v2.0</span>
+            </div>
+            <div class="header-center">
+                <div class="power-bar">
+                    <span class="power-label">⚡ Power:</span>
+                    <div class="power-meter">
+                        <div id="power-fill" class="power-fill"></div>
+                    </div>
+                    <span id="power-text">0 / 0 MW</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <span id="save-indicator">💾 Saved</span>
+                <button id="btn-save" class="btn-header" title="Save Game">💾 Save</button>
+                <button id="btn-export" class="btn-header" title="Export Save">📤</button>
+                <button id="btn-import" class="btn-header" title="Import Save">📥</button>
+                <button id="btn-reset" class="btn-header btn-danger" title="Hard Reset">🗑️</button>
+            </div>
+        </header>
+
+        <!-- RESOURCE BAR -->
+        <div id="resource-bar"></div>
+
+        <!-- MAIN LAYOUT -->
+        <div id="main-layout">
+            <!-- SIDEBAR TABS -->
+            <nav id="sidebar">
+                <button class="tab-btn active" data-tab="resources">📦<span class="tab-label">Resources</span></button>
+                <button class="tab-btn" data-tab="buildings">🏭<span class="tab-label">Buildings</span></button>
+                <button class="tab-btn" data-tab="research">🔬<span class="tab-label">Research</span></button>
+                <button class="tab-btn" data-tab="automation">⚙️<span class="tab-label">Automation</span></button>
+                <button class="tab-btn" data-tab="prestige">🔮<span class="tab-label">Prestige</span></button>
+                <button class="tab-btn" data-tab="achievements">🏆<span class="tab-label">Achieve</span></button>
+                <button class="tab-btn" data-tab="stats">📊<span class="tab-label">Stats</span></button>
+            </nav>
+
+            <!-- CONTENT AREA -->
+            <main id="content">
+                <!-- Resources Tab -->
+                <div id="tab-resources" class="tab-content active">
+                    <h2>📦 Resource Gathering</h2>
+                    <div class="section">
+                        <h3>⛏️ Manual Gathering</h3>
+                        <div id="gather-buttons" class="gather-grid"></div>
+                    </div>
+                    <div class="section">
+                        <h3>🔧 Crafting</h3>
+                        <div id="crafting-buttons" class="craft-grid"></div>
+                    </div>
+                </div>
+
+                <!-- Buildings Tab -->
+                <div id="tab-buildings" class="tab-content">
+                    <h2>🏭 Buildings</h2>
+                    <div id="building-categories"></div>
+                </div>
+
+                <!-- Research Tab -->
+                <div id="tab-research" class="tab-content">
+                    <h2>🔬 Research Lab</h2>
+                    <div id="research-active" class="section" style="display:none">
+                        <h3>🔄 Currently Researching</h3>
+                        <div id="research-progress-area"></div>
+                    </div>
+                    <div id="research-branches"></div>
+                </div>
+
+                <!-- Automation Tab -->
+                <div id="tab-automation" class="tab-content">
+                    <h2>⚙️ Automation Control</h2>
+                    <div id="automation-controls"></div>
+                </div>
+
+                <!-- Prestige Tab -->
+                <div id="tab-prestige" class="tab-content">
+                    <h2>🔮 Prestige — Singularity</h2>
+                    <div id="prestige-info"></div>
+                    <div id="prestige-upgrades"></div>
+                </div>
+
+                <!-- Achievements Tab -->
+                <div id="tab-achievements" class="tab-content">
+                    <h2>🏆 Achievements</h2>
+                    <div id="achievement-grid" class="achievement-grid"></div>
+                </div>
+
+                <!-- Stats Tab -->
+                <div id="tab-stats" class="tab-content">
+                    <h2>📊 Statistics</h2>
+                    <div id="stats-dashboard"></div>
+                </div>
+            </main>
+        </div>
+
+        <!-- TOAST CONTAINER -->
+        <div id="toast-container"></div>
+
+        <!-- FLOATING NUMBERS CONTAINER -->
+        <div id="float-container"></div>
+
+        <!-- IMPORT MODAL -->
+        <div id="import-modal" class="modal" style="display:none">
+            <div class="modal-content">
+                <h3>📥 Import Save</h3>
+                <textarea id="import-textarea" placeholder="Paste your save code here..."></textarea>
+                <div class="modal-buttons">
+                    <button id="import-confirm" class="btn btn-primary">Import</button>
+                    <button id="import-cancel" class="btn">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RESET MODAL -->
+        <div id="reset-modal" class="modal" style="display:none">
+            <div class="modal-content">
+                <h3>🗑️ Hard Reset</h3>
+                <p>This will permanently delete ALL progress. Type "RESET" to confirm.</p>
+                <input id="reset-input" type="text" placeholder='Type "RESET"'>
+                <div class="modal-buttons">
+                    <button id="reset-confirm" class="btn btn-danger">Reset Everything</button>
+                    <button id="reset-cancel" class="btn">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
